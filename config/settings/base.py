@@ -79,6 +79,8 @@ INSTALLED_APPS = [
     "vente",
     # Diagnostics techniques d'irrigation reçus de Cultiveau
     "dti",
+    # Référentiel produit, reflet du Drive catalogue
+    "catalogue",
     "storage",
     "public",
     "administration",
