@@ -29,3 +29,6 @@ node_modules/
 
 # Exports du Drive catalogue : volumineux et régénérables, le Drive fait foi
 catalogue/donnees/*.xlsx
+
+# Fiches techniques du Drive : rapatriées par la synchro, le Drive fait foi
+catalogue/donnees/fiches/
