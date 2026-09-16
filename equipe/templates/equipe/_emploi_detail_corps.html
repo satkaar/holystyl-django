@@ -6,7 +6,12 @@
     <span class="material-icons-round text-[16px]">arrow_back</span>{% trans "Toutes les offres" %}
   </a>
 
-  <div class="hs-card p-6 sm:p-8">
+  <div class="hs-card overflow-hidden">
+    {% if offre.exploitation.photo %}
+      <img src="{{ offre.exploitation.photo.url }}" alt="{% blocktrans with ferme=offre.exploitation.name %}La ferme {{ ferme }}{% endblocktrans %}"
+           class="block w-full object-cover" style="aspect-ratio: 16 / 7">
+    {% endif %}
+  <div class="p-6 sm:p-8">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div class="min-w-0">
         <h1 class="text-[22px]">{{ offre.titre }}</h1>
@@ -43,6 +48,7 @@
       <h2 class="mt-6 text-[15px] font-medium">{% trans "Profil recherché" %}</h2>
       <p class="mt-2 whitespace-pre-line text-[14px]" style="color: var(--text-secondary)">{{ offre.profil }}</p>
     {% endif %}
+  </div>
   </div>
 
   {# ── Candidature : ouverte, sans compte ── #}

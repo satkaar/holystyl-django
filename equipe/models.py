@@ -43,6 +43,31 @@ class TeamMember(TimeStampedModel):
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="managed_members"
     )
 
+    #: Ce qu'un contrat de travail et la DPAE demandent du salarié. Tout est
+    #: facultatif : un prestataire n'en a pas besoin, et un blanc laissé vide
+    #: s'imprime en pointillés sur le contrat plutôt que d'en bloquer l'édition.
+    class Civilite(models.TextChoices):
+        MADAME = "mme", _("Madame")
+        MONSIEUR = "m", _("Monsieur")
+
+    civilite = models.CharField(_("civilité"), max_length=3, choices=Civilite.choices, blank=True)
+    nom_naissance = models.CharField(_("nom de naissance"), max_length=120, blank=True)
+    date_naissance = models.DateField(_("date de naissance"), null=True, blank=True)
+    lieu_naissance = models.CharField(_("lieu de naissance"), max_length=255, blank=True)
+    nationalite = models.CharField(_("nationalité"), max_length=80, blank=True)
+    numero_securite_sociale = models.CharField(_("n° de sécurité sociale"), max_length=15, blank=True)
+    adresse = models.CharField(_("adresse"), max_length=255, blank=True)
+    code_postal = models.CharField(_("code postal"), max_length=10, blank=True)
+    ville = models.CharField(_("ville"), max_length=120, blank=True)
+    #: Hors Union européenne, l'employeur doit vérifier l'autorisation de
+    #: travail avant l'embauche et la suivre jusqu'à son terme.
+    titre_sejour_numero = models.CharField(_("n° du titre de séjour"), max_length=40, blank=True)
+    titre_sejour_expire_le = models.DateField(_("titre de séjour valable jusqu'au"), null=True, blank=True)
+    #: L'intitulé du poste, plus précis que le rôle — « tractoriste »,
+    #: « ouvrier viticole » — et la qualification de la convention collective.
+    poste = models.CharField(_("intitulé du poste"), max_length=255, blank=True)
+    qualification = models.CharField(_("qualification"), max_length=255, blank=True)
+
     class Meta:
         verbose_name = _("membre d'équipe")
         verbose_name_plural = _("membres d'équipe")
@@ -55,6 +80,15 @@ class TeamMember(TimeStampedModel):
     def peut_etre_invite(self) -> bool:
         """Un membre s'invite s'il a un email et pas encore de compte lié."""
         return bool(self.email) and self.user_id is None
+
+    @property
+    def adresse_complete(self) -> str:
+        return " ".join(p for p in (self.adresse, self.code_postal, self.ville) if p)
+
+    @property
+    def intitule_poste(self) -> str:
+        """Le poste saisi, ou à défaut le rôle dans l'équipe."""
+        return self.poste or self.get_role_display()
 
 
 class Task(TimeStampedModel):
@@ -147,6 +181,33 @@ class TaskReminder(models.Model):
     class Meta:
         verbose_name = _("rappel de tâche")
         verbose_name_plural = _("rappels de tâche")
+
+
+class Poste(TimeStampedModel):
+    """Un poste de la banque de l'exploitation, repris d'une saisie à l'autre.
+
+    Il se propose partout où l'on écrit un intitulé de poste — fiche d'un
+    membre, offre d'emploi, contrat — et apporte avec lui ce qu'on retaperait
+    sinon : la qualification, les missions, le profil recherché.
+    """
+
+    exploitation = models.ForeignKey(
+        "exploitations.Exploitation", on_delete=models.CASCADE, related_name="postes")
+    intitule = models.CharField(_("intitulé du poste"), max_length=255)
+    qualification = models.CharField(_("qualification"), max_length=255, blank=True)
+    missions = models.TextField(_("missions"), blank=True)
+    profil = models.TextField(_("profil recherché"), blank=True)
+
+    class Meta:
+        verbose_name = _("poste")
+        verbose_name_plural = _("postes")
+        ordering = ("intitule",)
+        constraints = [
+            models.UniqueConstraint(fields=["exploitation", "intitule"], name="un_intitule_par_exploitation"),
+        ]
+
+    def __str__(self):
+        return self.intitule
 
 
 class ModeleContrat(TimeStampedModel):
@@ -274,7 +335,6 @@ class OffreEmploi(TimeStampedModel):
     #: Texte libre : une offre annonce souvent « selon profil » ou une fourchette.
     remuneration = models.CharField(_("rémunération"), max_length=255, blank=True)
     logement = models.BooleanField(_("logement possible"), default=False)
-    contact_email = models.EmailField(_("email de contact"), blank=True)
 
     statut = models.CharField(_("statut"), max_length=10,
                               choices=Statut.choices, default=Statut.BROUILLON)

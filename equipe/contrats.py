@@ -24,11 +24,19 @@ JETONS = (
     ("salarie", _("Nom du salarié")),
     ("salarie_email", _("Email du salarié")),
     ("salarie_telephone", _("Téléphone du salarié")),
+    ("salarie_civilite", _("Civilité du salarié")),
+    ("salarie_nom_naissance", _("Nom de naissance du salarié")),
+    ("salarie_date_naissance", _("Date de naissance du salarié")),
+    ("salarie_lieu_naissance", _("Lieu de naissance du salarié")),
+    ("salarie_nationalite", _("Nationalité du salarié")),
+    ("salarie_adresse", _("Adresse du salarié")),
+    ("salarie_securite_sociale", _("N° de sécurité sociale du salarié")),
     ("exploitation", _("Nom de l'exploitation")),
     ("exploitation_adresse", _("Adresse de l'exploitation")),
     ("exploitation_siret", _("SIRET de l'exploitation")),
     ("employeur", _("Nom du chef d'exploitation")),
     ("poste", _("Poste occupé")),
+    ("qualification", _("Qualification")),
     ("lieu", _("Lieu de travail")),
     ("date_debut", _("Date de début")),
     ("date_fin", _("Date de fin")),
@@ -123,6 +131,28 @@ def valeurs_saisies(donnees):
     return saisies
 
 
+def valeurs_salarie(membre):
+    """Ce que la fiche du salarié apporte au contrat.
+
+    Ce sont les blancs qui attendent, à l'établissement, qu'on choisisse le
+    salarié : les remplir d'avance avec le premier venu serait faux.
+    """
+    return {
+        "salarie": membre.name,
+        "salarie_email": membre.email,
+        "salarie_telephone": membre.phone,
+        "salarie_civilite": membre.get_civilite_display() if membre.civilite else "",
+        "salarie_nom_naissance": membre.nom_naissance,
+        "salarie_date_naissance": membre.date_naissance,
+        "salarie_lieu_naissance": membre.lieu_naissance,
+        "salarie_nationalite": membre.nationalite,
+        "salarie_adresse": membre.adresse_complete,
+        "salarie_securite_sociale": membre.numero_securite_sociale,
+        "poste": membre.intitule_poste,
+        "qualification": membre.qualification,
+    }
+
+
 def valeurs_pour(contrat):
     """Les valeurs d'un contrat, prêtes pour `remplir`."""
     from django.utils import timezone
@@ -131,9 +161,7 @@ def valeurs_pour(contrat):
     exploitation = contrat.exploitation
     proprietaire = getattr(exploitation, "owner", None)
     return {
-        "salarie": membre.name,
-        "salarie_email": membre.email,
-        "salarie_telephone": membre.phone,
+        **valeurs_salarie(membre),
         "exploitation": exploitation.name,
         "exploitation_adresse": " ".join(
             p for p in (getattr(exploitation, "address", ""),
@@ -141,7 +169,8 @@ def valeurs_pour(contrat):
                         getattr(exploitation, "city", "")) if p),
         "exploitation_siret": getattr(exploitation, "siret", "") or "",
         "employeur": proprietaire.display_name if proprietaire else "",
-        "poste": contrat.poste,
+        # Le poste du contrat prime ; la fiche ne sert qu'à défaut.
+        "poste": contrat.poste or membre.intitule_poste,
         "lieu": contrat.lieu,
         "date_debut": contrat.date_debut,
         "date_fin": contrat.date_fin,
@@ -162,7 +191,10 @@ immatriculée sous le SIRET {{ exploitation_siret }}, représentée par
 
 et
 
-{{ salarie }}, ci-après « le salarié »,
+{{ salarie_civilite }} {{ salarie }}, né(e) le {{ salarie_date_naissance }}
+à {{ salarie_lieu_naissance }}, de nationalité {{ salarie_nationalite }},
+demeurant {{ salarie_adresse }}, immatriculé(e) à la sécurité sociale sous le
+n° {{ salarie_securite_sociale }}, ci-après « le salarié »,
 
 il a été convenu ce qui suit.
 """
@@ -192,7 +224,7 @@ SQUELETTES = (
         "corps": _ENTETE + """
 Article 1 — Engagement
 Le salarié est engagé à compter du {{ date_debut }} pour une durée
-indéterminée, au poste de {{ poste }}.
+indéterminée, au poste de {{ poste }}, qualification {{ qualification }}.
 
 Article 2 — Lieu de travail
 Le salarié exerce ses fonctions à {{ lieu }}. La nature agricole de l'activité
@@ -221,7 +253,8 @@ Article 2 — Durée
 Le contrat prend effet le {{ date_debut }} et prend fin le {{ date_fin }}.
 
 Article 3 — Poste et lieu
-Le salarié est engagé au poste de {{ poste }}, à {{ lieu }}.
+Le salarié est engagé au poste de {{ poste }}, qualification
+{{ qualification }}, à {{ lieu }}.
 
 Article 4 — Durée du travail
 La durée hebdomadaire de travail est de {{ duree_hebdo }} heures.
@@ -248,8 +281,8 @@ Il peut prendre fin par anticipation à l'achèvement de la saison, si cette
 possibilité est prévue et portée à la connaissance du salarié.
 
 Article 3 — Travaux confiés
-Le salarié est engagé au poste de {{ poste }}, à {{ lieu }}, pour les travaux
-liés à la saison en cours.
+Le salarié est engagé au poste de {{ poste }}, qualification
+{{ qualification }}, à {{ lieu }}, pour les travaux liés à la saison en cours.
 
 Article 4 — Durée du travail et rémunération
 La durée hebdomadaire de travail est de {{ duree_hebdo }} heures. La

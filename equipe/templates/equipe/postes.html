@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% comment %}
+  La banque des postes. Chaque poste se propose ensuite là où l'on écrit un
+  intitulé — fiche d'un membre, offre d'emploi, contrat — et y apporte sa
+  qualification, ses missions et le profil recherché.
+{% endcomment %}
+
+{% block content %}
+<section class="hs-contraste space-y-5 pb-6" x-data="{ ouvert: false, poste: {} }">
+
+  <p class="hs-crumb">{% trans "RH" %} · {% trans "Banque des postes" %}</p>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-[20px]">{% trans "Banque des postes" %}</h1>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        {% trans "Les postes de l'exploitation, proposés dès qu'on écrit un intitulé : fiche d'un membre, offre d'emploi, contrat." %}
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      {% if courants_manquants %}
+        <form method="post" action="{% url 'equipe:postes_importer' %}">
+          {% csrf_token %}
+          <button type="submit" class="hs-btn-outline">
+            <span class="material-icons-round text-[18px]">playlist_add</span>
+            {% blocktrans count n=courants_manquants %}Ajouter {{ n }} poste courant{% plural %}Ajouter {{ n }} postes courants{% endblocktrans %}
+          </button>
+        </form>
+      {% endif %}
+      <button type="button" @click="ouvert = true; poste = {}; $nextTick(() => $refs.intitule.focus())" class="hs-btn-primary">
+        <span class="material-icons-round text-[18px]">add</span>{% trans "Nouveau poste" %}
+      </button>
+    </div>
+  </div>
+
+  {# ── Rédiger un poste ── #}
+  <form x-show="ouvert" x-cloak method="post" class="hs-panel"
+        :action="poste.id ? '{% url 'equipe:poste_edit' 0 %}'.replace('/0/', '/' + poste.id + '/') : '{% url 'equipe:poste_create' %}'">
+    {% csrf_token %}
+    {% trans "Modifier le poste" as libelle_modifier %}
+    {% trans "Nouveau poste" as libelle_nouveau %}
+    <div class="hs-panel-head">
+      <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">edit_note</span></span>
+      <div>
+        <h2 class="hs-panel-title" x-text="poste.id ? '{{ libelle_modifier|escapejs }}' : '{{ libelle_nouveau|escapejs }}'"></h2>
+        <p class="hs-panel-sub">{% trans "Ce qui sera repris à chaque fois que ce poste est choisi." %}</p>
+      </div>
+    </div>
+    <div class="hs-panel-body grid gap-x-8 gap-y-4 sm:grid-cols-2">
+      <div>
+        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text)" for="p-intitule">{% trans "Intitulé du poste" %} <span style="color: var(--danger)">*</span></label>
+        <input id="p-intitule" x-ref="intitule" name="intitule" required maxlength="255" x-model="poste.intitule"
+               placeholder="{% trans 'Ex. ouvrier viticole' %}">
+      </div>
+      <div>
+        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text)" for="p-qualif">{% trans "Qualification" %}</label>
+        <input id="p-qualif" name="qualification" maxlength="255" x-model="poste.qualification"
+               placeholder="{% trans 'Niveau, échelon ou coefficient de la convention collective' %}">
+      </div>
+      <div>
+        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text)" for="p-missions">{% trans "Missions" %}</label>
+        <textarea id="p-missions" name="missions" rows="4" x-model="poste.missions"></textarea>
+        <p class="mt-1 text-[12px]" style="color: var(--text-secondary)">{% trans "Reprises comme description du poste dans une offre d'emploi." %}</p>
+      </div>
+      <div>
+        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text)" for="p-profil">{% trans "Profil recherché" %}</label>
+        <textarea id="p-profil" name="profil" rows="4" x-model="poste.profil"></textarea>
+      </div>
+    </div>
+    <div class="hs-panel-foot">
+      <button type="button" @click="ouvert = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+      <button type="submit" class="hs-btn-primary">{% trans "Enregistrer" %}</button>
+    </div>
+  </form>
+
+  {# ── Les postes ── #}
+  {% if postes %}
+    <div class="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+      {% for p in postes %}
+        <article class="hs-panel">
+          <div class="hs-panel-head justify-between">
+            <div class="flex min-w-0 items-center gap-3">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">work</span></span>
+              <div class="min-w-0">
+                <h2 class="hs-panel-title truncate">{{ p.intitule }}</h2>
+                <p class="hs-panel-sub">
+                  {% if p.qualification %}{{ p.qualification }}{% else %}{% trans "Qualification non précisée" %}{% endif %}
+                </p>
+              </div>
+            </div>
+            <div class="flex shrink-0 items-center">
+              {# escapejs : les missions contiennent des retours à la ligne. #}
+              <button type="button" class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10"
+                      style="color: var(--text)" title="{% trans 'Modifier' %}" aria-label="{% blocktrans with p=p.intitule %}Modifier {{ p }}{% endblocktrans %}"
+                      @click="ouvert = true; poste = { id: {{ p.pk }}, intitule: '{{ p.intitule|escapejs }}', qualification: '{{ p.qualification|escapejs }}', missions: '{{ p.missions|escapejs }}', profil: '{{ p.profil|escapejs }}' }; window.scrollTo({ top: 0, behavior: 'smooth' })">
+                <span class="material-icons-round text-[18px]">edit</span>
+              </button>
+              <form method="post" action="{% url 'equipe:poste_delete' p.pk %}" class="leading-none"
+                    onsubmit="return confirm('{% trans "Retirer ce poste de la banque ? Les fiches qui le portent gardent leur intitulé." %}')">
+                {% csrf_token %}
+                <button type="submit" class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10"
+                        style="color: var(--danger)" title="{% trans 'Supprimer' %}" aria-label="{% blocktrans with p=p.intitule %}Supprimer {{ p }}{% endblocktrans %}">
+                  <span class="material-icons-round text-[18px]">delete_outline</span>
+                </button>
+              </form>
+            </div>
+          </div>
+          <div class="hs-panel-body space-y-3 text-[13.5px]" style="color: var(--text)">
+            {% if p.missions %}
+              <div>
+                <p class="mb-0.5 text-[12px] font-medium uppercase tracking-wide" style="color: var(--text-secondary)">{% trans "Missions" %}</p>
+                <p>{{ p.missions|linebreaksbr }}</p>
+              </div>
+            {% endif %}
+            {% if p.profil %}
+              <div>
+                <p class="mb-0.5 text-[12px] font-medium uppercase tracking-wide" style="color: var(--text-secondary)">{% trans "Profil recherché" %}</p>
+                <p>{{ p.profil|linebreaksbr }}</p>
+              </div>
+            {% endif %}
+            {% if not p.missions and not p.profil %}
+              <p style="color: var(--text-secondary)">{% trans "Ni missions ni profil : ajoutez-les pour qu'une offre les reprenne." %}</p>
+            {% endif %}
+            <p class="flex items-center gap-1.5 text-[12.5px]" style="color: var(--text-secondary)">
+              <span class="material-icons-round text-[16px]">link</span>
+              {% if p.usages %}
+                {% blocktrans count n=p.usages %}Porté par {{ n }} fiche ou offre{% plural %}Porté par {{ n }} fiches ou offres{% endblocktrans %}
+              {% else %}
+                {% trans "Pas encore utilisé" %}
+              {% endif %}
+            </p>
+          </div>
+        </article>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="hs-panel px-6 py-10 text-center">
+      <span class="hs-panel-icon mx-auto mb-3"><span class="material-icons-round text-[19px]">work_history</span></span>
+      <p class="hs-panel-title">{% trans "La banque est vide" %}</p>
+      <p class="mx-auto mt-1 max-w-xl text-[13px]" style="color: var(--text-secondary)">
+        {% trans "Les postes courants d'une exploitation sont déjà proposés quand vous écrivez un intitulé. Ajoutez-les ici pour les adapter à votre ferme, ou créez les vôtres." %}
+      </p>
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -22,10 +22,10 @@ from parcelles import carte as carte_parcelles
 from parcelles.models import Parcelle
 
 from . import invitations
-from .forms import InvitationAccountForm, TaskForm, TeamMemberForm
-from . import contrats as contrats_service, services
+from .forms import InvitationAccountForm, TaskForm, TeamMemberEditForm, TeamMemberForm
+from . import contrats as contrats_service, postes as postes_service, services
 from .models import (Candidature, ContratTravail, FichePaie, LignePaie, ModeleContrat,
-                     OffreEmploi, Task, TeamMember)
+                     OffreEmploi, Poste, Task, TeamMember)
 
 User = get_user_model()
 
@@ -58,15 +58,32 @@ def equipe(request):
 def membre_edit(request, pk):
     exploitation = _exploitation(request)
     member = get_object_or_404(TeamMember, pk=pk, exploitation=exploitation)
+    # Ce que le contrat attend du salarié, et ce que la fiche enregistrée en
+    # sait déjà. Relevé avant la validation, qui écrit la saisie sur `member`
+    # même quand elle est refusée.
+    dossier = [
+        (_("Civilité"), bool(member.civilite)),
+        (_("Date de naissance"), bool(member.date_naissance)),
+        (_("Lieu de naissance"), bool(member.lieu_naissance)),
+        (_("Nationalité"), bool(member.nationalite)),
+        (_("N° de sécurité sociale"), bool(member.numero_securite_sociale)),
+        (_("Adresse"), bool(member.adresse and member.code_postal and member.ville)),
+        (_("Intitulé du poste"), bool(member.poste)),
+        (_("Qualification"), bool(member.qualification)),
+    ]
     if request.method == "POST":
-        form = TeamMemberForm(request.POST, instance=member)
+        form = TeamMemberEditForm(request.POST, instance=member)
         if form.is_valid():
             form.save()
             messages.success(request, _("%(name)s a été mis à jour.") % {"name": member.name})
             return redirect("equipe:equipe")
     else:
-        form = TeamMemberForm(instance=member)
-    return render(request, "equipe/edit.html", {"form": form, "member": member, "page_title": _("Modifier le membre")})
+        form = TeamMemberEditForm(instance=member)
+    return render(request, "equipe/edit.html", {
+        "form": form, "member": member, "page_title": _("Modifier le membre"),
+        "banque_postes": postes_service.suggestions(exploitation),
+        "dossier": dossier, "dossier_complet": sum(rempli for _libelle, rempli in dossier),
+    })
 
 
 @login_required
@@ -348,7 +365,7 @@ def _champs_contrat(request):
 
 
 #: Les blancs qui appellent un calendrier, et ceux qui appellent un nombre.
-_BLANCS_DATE = {"date_debut", "date_fin", "date_du_jour"}
+_BLANCS_DATE = {"date_debut", "date_fin", "date_du_jour", "salarie_date_naissance"}
 _BLANCS_NOMBRE = {"duree_hebdo", "remuneration"}
 
 
@@ -373,8 +390,13 @@ def _propositions(exploitation):
         if lieu not in vus:
             vus.add(lieu)
             uniques.append(lieu)
+    postes = list(dict.fromkeys(
+        [libelle for _code, libelle in TeamMember.Role.choices]
+        + list(TeamMember.objects.filter(exploitation=exploitation).exclude(poste="")
+               .values_list("poste", flat=True))
+        + [p["intitule"] for p in postes_service.suggestions(exploitation)]))
     return {
-        "poste": [libelle for _code, libelle in TeamMember.Role.choices],
+        "poste": postes,
         "lieu": uniques,
         "duree_hebdo": ["35", "39"],
     }
@@ -399,12 +421,13 @@ def contrat_etablir(request, pk):
     connues = contrats_service.valeurs_pour(ContratTravail(
         exploitation=exploitation, membre=membres[0] if membres else TeamMember()))
     propositions = _propositions(exploitation)
+    de_la_fiche = set(contrats_service.valeurs_salarie(TeamMember()))
 
     blancs, valeurs, libre = {}, {}, {}
     for cle in contrats_service.jetons_utilises(modele.corps):
-        # L'identité du salarié attend qu'on en choisisse un ; le reste part
-        # de ce que l'exploitation sait déjà.
-        valeur = "" if cle.startswith("salarie") else (connues.get(cle) or "")
+        # Ce que dit la fiche du salarié attend qu'on en choisisse un ; le
+        # reste part de ce que l'exploitation sait déjà.
+        valeur = "" if cle in de_la_fiche else (connues.get(cle) or "")
         if cle in _BLANCS_DATE and hasattr(valeur, "isoformat"):
             valeur = valeur.isoformat()  # ce qu'attend <input type="date">
         options = propositions.get(cle, [])
@@ -448,9 +471,9 @@ def contrat_etablir(request, pk):
             "urls_signatures": {str(p.pk): p.fichier.url for p in signatures},
         }),
         "fiches_membres": json.dumps({
-            str(m.pk): {"salarie": m.name, "salarie_email": m.email,
-                        "salarie_telephone": m.phone,
-                        "poste": m.get_role_display()} for m in membres}),
+            str(m.pk): {cle: (v.isoformat() if hasattr(v, "isoformat") else v or "")
+                        for cle, v in contrats_service.valeurs_salarie(m).items()}
+            for m in membres}),
         "page_title": _("Établir un contrat"),
     })
 
@@ -775,7 +798,6 @@ def _champs_offre(request):
         "duree_hebdo": _to_float(request.POST.get("duree_hebdo")),
         "remuneration": (request.POST.get("remuneration") or "").strip()[:255],
         "logement": request.POST.get("logement") == "on",
-        "contact_email": (request.POST.get("contact_email") or "").strip(),
         "expire_le": _to_date(request.POST.get("expire_le")),
     }
 
@@ -807,6 +829,7 @@ def offres(request):
         "types": ModeleContrat.Type.choices,
         "statuts": OffreEmploi.Statut.choices,
         "statuts_candidature": Candidature.Statut.choices,
+        "banque_postes": postes_service.suggestions(exploitation),
         "page_title": _("Offres d'emploi"),
     })
 
@@ -858,6 +881,90 @@ def offre_delete(request, pk):
     exploitation = _exploitation(request)
     get_object_or_404(OffreEmploi, pk=pk, exploitation=exploitation).delete()
     return redirect("equipe:offres")
+
+
+@login_required
+@espace_requis(EXPLOITANT)
+def postes(request):
+    """La banque des postes de l'exploitation, et combien chacun sert."""
+    exploitation = _exploitation(request)
+    banque = list(Poste.objects.filter(exploitation=exploitation)) if exploitation else []
+    # Un poste « sert » quand un membre ou une offre porte son intitulé.
+    usages = {}
+    if exploitation:
+        for intitule in (list(TeamMember.objects.filter(exploitation=exploitation)
+                              .exclude(poste="").values_list("poste", flat=True))
+                         + list(OffreEmploi.objects.filter(exploitation=exploitation)
+                                .values_list("titre", flat=True))):
+            usages[intitule.casefold()] = usages.get(intitule.casefold(), 0) + 1
+    for poste in banque:
+        poste.usages = usages.get(poste.intitule.casefold(), 0)
+    connus = {p.intitule.casefold() for p in banque}
+    return render(request, "equipe/postes.html", {
+        "postes": banque,
+        "courants_manquants": sum(1 for p in postes_service.courants()
+                                  if p["intitule"].casefold() not in connus),
+        "page_title": _("Banque des postes"),
+    })
+
+
+@login_required
+@espace_requis(EXPLOITANT)
+@require_POST
+def poste_save(request, pk=None):
+    exploitation = _exploitation(request)
+    if exploitation is None:
+        messages.error(request, _("Créez d'abord votre exploitation."))
+        return redirect("equipe:postes")
+
+    poste = (get_object_or_404(Poste, pk=pk, exploitation=exploitation)
+             if pk else Poste(exploitation=exploitation))
+    intitule = (request.POST.get("intitule") or "").strip()[:255]
+    if not intitule:
+        messages.error(request, _("Un poste a besoin d'un intitulé."))
+        return redirect("equipe:postes")
+    doublon = (Poste.objects.filter(exploitation=exploitation, intitule__iexact=intitule)
+               .exclude(pk=poste.pk).exists())
+    if doublon:
+        messages.error(request, _("« %(intitule)s » est déjà dans la banque.") % {"intitule": intitule})
+        return redirect("equipe:postes")
+
+    poste.intitule = intitule
+    poste.qualification = (request.POST.get("qualification") or "").strip()[:255]
+    poste.missions = (request.POST.get("missions") or "").strip()
+    poste.profil = (request.POST.get("profil") or "").strip()
+    poste.save()
+    return redirect("equipe:postes")
+
+
+@login_required
+@espace_requis(EXPLOITANT)
+@require_POST
+def poste_delete(request, pk):
+    """Retire un poste de la banque. Les fiches qui le portent gardent leur intitulé."""
+    exploitation = _exploitation(request)
+    get_object_or_404(Poste, pk=pk, exploitation=exploitation).delete()
+    return redirect("equipe:postes")
+
+
+@login_required
+@espace_requis(EXPLOITANT)
+@require_POST
+def postes_importer(request):
+    """Copie dans la banque les postes courants qu'elle n'a pas encore."""
+    exploitation = _exploitation(request)
+    if exploitation is None:
+        messages.error(request, _("Créez d'abord votre exploitation."))
+        return redirect("equipe:postes")
+
+    connus = {i.casefold() for i in Poste.objects.filter(exploitation=exploitation)
+              .values_list("intitule", flat=True)}
+    nouveaux = [Poste(exploitation=exploitation, intitule=p["intitule"], missions=p["missions"],
+                      profil=p["profil"])
+                for p in postes_service.courants() if p["intitule"].casefold() not in connus]
+    Poste.objects.bulk_create(nouveaux, ignore_conflicts=True)
+    messages.success(request, _("%(n)s poste(s) ajouté(s) à la banque.") % {"n": len(nouveaux)})
+    return redirect("equipe:postes")
 
 
 @login_required
