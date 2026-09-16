@@ -1,0 +1,125 @@
+{% load i18n %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>{% blocktrans with c=campagne %}Rapport environnemental — {{ c }}{% endblocktrans %}</title>
+  <style>
+    @page { size: A4; margin: 18mm 16mm; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 10pt; color: #111; }
+    h1 { font-size: 17pt; font-weight: 600; margin: 0; }
+    h2 { font-size: 11.5pt; font-weight: 600; margin: 0 0 2mm; padding-bottom: 1mm; border-bottom: 0.4pt solid #999; }
+    .entete { border-bottom: 1pt solid #333; padding-bottom: 4mm; margin-bottom: 6mm; }
+    .ferme { font-size: 11pt; margin-top: 1.5mm; }
+    .meta { font-size: 8.5pt; color: #555; margin-top: 1mm; }
+    section { margin-bottom: 6mm; page-break-inside: avoid; }
+    dl { margin: 0; }
+    .ligne { display: flex; justify-content: space-between; border-bottom: 0.3pt dotted #bbb; padding: 1.1mm 0; }
+    .ligne dt { color: #555; }
+    .ligne dd { margin: 0; font-weight: 600; }
+    .vide { color: #777; font-style: italic; }
+    .alerte { color: #A32D2D; }
+    .ok { color: #3B6D11; }
+    .pied { margin-top: 8mm; border-top: 0.4pt solid #999; padding-top: 3mm; font-size: 7.5pt; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="entete">
+    <h1>{% trans "Rapport environnemental" %}</h1>
+    <p class="ferme">
+      {{ synthese.exploitation.name }}{% if synthese.exploitation.siret %} — SIRET {{ synthese.exploitation.siret }}{% endif %}
+    </p>
+    <p class="meta">
+      {% blocktrans with c=campagne %}Campagne {{ c }}{% endblocktrans %} ·
+      {% blocktrans with d=edite_le|date:"DATE_FORMAT" %}édité le {{ d }}{% endblocktrans %} ·
+      {% blocktrans with sau=synthese.sau n=synthese.parcelles %}{{ sau }} ha de SAU, {{ n }} parcelles{% endblocktrans %}
+      {% if synthese.certifications %} · {% for c in synthese.certifications %}{{ c }}{% if not forloop.last %}, {% endif %}{% endfor %}{% endif %}
+    </p>
+  </div>
+
+  <section>
+    <h2>{% trans "Eau" %}</h2>
+    {% if synthese.eau.renseigne %}
+      <dl>
+        <div class="ligne"><dt>{% trans "Volume irrigué" %}</dt><dd>{{ synthese.eau.volume_m3|floatformat:"-1" }} m³</dd></div>
+        <div class="ligne"><dt>{% trans "Sessions d'irrigation" %}</dt><dd>{{ synthese.eau.sessions }}</dd></div>
+        <div class="ligne"><dt>{% trans "Énergie de pompage" %}</dt><dd>{{ synthese.eau.energie_kwh|floatformat:"-1" }} kWh</dd></div>
+        {% if synthese.eau.kwh_par_m3 %}<div class="ligne"><dt>{% trans "Énergie par m³" %}</dt><dd>{{ synthese.eau.kwh_par_m3 }} kWh/m³</dd></div>{% endif %}
+        {% if synthese.eau.pct_quota is not None %}<div class="ligne"><dt>{% trans "Part du quota consommée" %}</dt><dd>{{ synthese.eau.pct_quota }} %</dd></div>{% endif %}
+      </dl>
+    {% else %}
+      <p class="vide">{% trans "Non renseigné sur cette campagne." %}</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>{% trans "Azote" %}</h2>
+    {% if synthese.azote.renseigne %}
+      <dl>
+        <div class="ligne"><dt>{% trans "Azote apporté" %}</dt><dd>{{ synthese.azote.n_total|floatformat:"-1" }} kg N</dd></div>
+        <div class="ligne"><dt>{% trans "Engrais minéraux" %}</dt><dd>{{ synthese.azote.n_mineral|floatformat:"-1" }} kg N</dd></div>
+        <div class="ligne"><dt>{% trans "Effluents d'élevage" %}</dt><dd>{{ synthese.azote.n_effluents|floatformat:"-1" }} kg N</dd></div>
+        <div class="ligne"><dt>{% trans "Moyenne sur la SAU" %}</dt><dd>{{ synthese.azote.n_total_ha|default_if_none:"—" }} kg N/ha</dd></div>
+        <div class="ligne">
+          <dt>{% trans "Effluents rapportés à la SAU (plafond directive Nitrates)" %}</dt>
+          <dd class="{% if synthese.azote.depasse %}alerte{% else %}ok{% endif %}">
+            {{ synthese.azote.effluents_ha|default_if_none:"—" }} / {{ synthese.azote.plafond }} kg N/ha/an
+          </dd>
+        </div>
+      </dl>
+    {% else %}
+      <p class="vide">{% trans "Non renseigné sur cette campagne." %}</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>{% trans "Carbone" %}</h2>
+    {% if synthese.carbone.renseigne %}
+      <dl>
+        <div class="ligne"><dt>{% trans "Émissions" %}</dt><dd>{{ synthese.carbone.emissions|floatformat:"-1" }} kg CO₂e</dd></div>
+        <div class="ligne"><dt>{% trans "Carbone stocké" %}</dt><dd>{{ synthese.carbone.stockage|floatformat:"-1" }} kg CO₂e</dd></div>
+        <div class="ligne"><dt>{% trans "Net" %}</dt><dd>{{ synthese.carbone.net|floatformat:"-1" }} kg CO₂e</dd></div>
+        <div class="ligne"><dt>{% trans "Par hectare" %}</dt><dd>{{ synthese.carbone.emissions_ha|default_if_none:"—" }} kg CO₂e/ha</dd></div>
+      </dl>
+      {% if synthese.carbone.sans_facteur %}
+        <p class="alerte" style="margin-top: 2mm">
+          {% blocktrans count n=synthese.carbone.sans_facteur|length %}{{ n }} poste sans facteur d'émission : il ne pèse rien dans ce total.{% plural %}{{ n }} postes sans facteur d'émission : ils ne pèsent rien dans ce total.{% endblocktrans %}
+        </p>
+      {% endif %}
+    {% else %}
+      <p class="vide">{% trans "Non renseigné sur cette campagne." %}</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>{% trans "Biodiversité" %}</h2>
+    {% if synthese.biodiversite.renseigne %}
+      <dl>
+        <div class="ligne"><dt>{% trans "Relevés" %}</dt><dd>{{ synthese.biodiversite.fiches }}</dd></div>
+        <div class="ligne"><dt>{% trans "Parcelles suivies" %}</dt><dd>{{ synthese.biodiversite.parcelles_suivies }}</dd></div>
+        <div class="ligne"><dt>{% trans "Score moyen" %}</dt><dd>{{ synthese.biodiversite.score_moyen|default_if_none:"—" }}{% if synthese.biodiversite.score_moyen is not None %}/100{% endif %}</dd></div>
+        <div class="ligne"><dt>{% trans "Haies" %}</dt><dd>{{ synthese.biodiversite.haies_ml|floatformat:"-1" }} ml</dd></div>
+        <div class="ligne"><dt>{% trans "Jachère" %}</dt><dd>{{ synthese.biodiversite.jachere_ha|floatformat:"-2" }} ha</dd></div>
+      </dl>
+    {% else %}
+      <p class="vide">{% trans "Non renseigné sur cette campagne." %}</p>
+    {% endif %}
+  </section>
+
+  <section>
+    <h2>{% trans "Taxonomie EU" %}</h2>
+    {% if synthese.taxonomie.renseigne %}
+      <dl>
+        <div class="ligne"><dt>{% trans "Fiches d'activité" %}</dt><dd>{{ synthese.taxonomie.fiches }}</dd></div>
+        <div class="ligne"><dt>{% trans "Activités alignées" %}</dt><dd>{{ synthese.taxonomie.alignees }}</dd></div>
+        <div class="ligne"><dt>{% trans "Chiffre d'affaires aligné" %}</dt><dd>{{ synthese.taxonomie.pct_ca_aligne|default_if_none:"—" }}{% if synthese.taxonomie.pct_ca_aligne is not None %} %{% endif %}</dd></div>
+      </dl>
+    {% else %}
+      <p class="vide">{% trans "Non renseigné sur cette campagne." %}</p>
+    {% endif %}
+  </section>
+
+  <p class="pied">
+    {% trans "Rapport établi depuis Isidor à partir des données saisies par l'exploitation. Les chiffres carbone sont une estimation par facteurs d'émission et ne valent pas diagnostic certifié. Le plafond azoté ne s'applique qu'en zone vulnérable, et les obligations locales relèvent du programme d'actions national et régional." %}
+  </p>
+</body>
+</html>

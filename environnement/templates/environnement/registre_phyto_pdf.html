@@ -1,0 +1,102 @@
+{% load i18n %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>{% blocktrans with c=campagne %}Registre phytosanitaire — {{ c }}{% endblocktrans %}</title>
+  <style>
+    @page { size: A4 landscape; margin: 14mm 12mm; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 9pt; color: #111; }
+    h1 { font-size: 15pt; font-weight: 600; margin: 0; }
+    h2 { font-size: 11pt; font-weight: 600; margin: 6mm 0 2mm; }
+    .entete { border-bottom: 1pt solid #333; padding-bottom: 3mm; margin-bottom: 5mm; }
+    .ferme { font-size: 10pt; margin-top: 1mm; }
+    .meta { font-size: 8.5pt; color: #555; margin-top: 1mm; }
+    table { width: 100%; border-collapse: collapse; margin-top: 2mm; }
+    th, td { border: 0.4pt solid #999; padding: 1.5mm 2mm; text-align: left; vertical-align: top; }
+    th { background: #eee; font-weight: 600; font-size: 8.5pt; }
+    td.num, th.num { text-align: right; }
+    .manque { color: #BA7517; font-style: italic; }
+    .pied { margin-top: 6mm; border-top: 0.4pt solid #999; padding-top: 2.5mm; font-size: 7.5pt; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="entete">
+    <h1>{% trans "Registre des traitements phytosanitaires" %}</h1>
+    <p class="ferme">{{ exploitation.name }}{% if exploitation.siret %} — SIRET {{ exploitation.siret }}{% endif %}</p>
+    <p class="meta">
+      {% blocktrans with c=campagne %}Campagne {{ c }}{% endblocktrans %} ·
+      {% blocktrans with d=edite_le|date:"DATE_FORMAT" %}édité le {{ d }}{% endblocktrans %} ·
+      {% blocktrans with n=bilan.nb_traitements s=bilan.surface_traitee %}{{ n }} traitements, {{ s }} ha traités{% endblocktrans %}
+    </p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>{% trans "Date" %}</th>
+        <th>{% trans "Parcelle" %}</th>
+        <th>{% trans "Culture" %}</th>
+        <th>{% trans "Produit" %}</th>
+        <th>{% trans "N° AMM" %}</th>
+        <th>{% trans "Cible" %}</th>
+        <th class="num">{% trans "Dose" %}</th>
+        <th class="num">{% trans "Surface (ha)" %}</th>
+        <th class="num">{% trans "DAR" %}</th>
+        <th>{% trans "Applicateur" %}</th>
+        <th>{% trans "Conditions" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in bilan.traitements %}
+        <tr>
+          <td>{{ t.date|date:"d/m/Y" }}</td>
+          <td>{{ t.parcelle.name|default:"—" }}</td>
+          <td>{{ t.culture|default:"—" }}</td>
+          <td>{{ t.produit }}</td>
+          <td>{% if t.numero_amm %}{{ t.numero_amm }}{% else %}<span class="manque">{% trans "à compléter" %}</span>{% endif %}</td>
+          <td>{% if t.cible %}{{ t.cible }}{% else %}<span class="manque">{% trans "à compléter" %}</span>{% endif %}</td>
+          <td class="num">{% if t.dose %}{{ t.dose|floatformat:"-3" }} {{ t.unite_dose }}{% else %}<span class="manque">{% trans "à compléter" %}</span>{% endif %}</td>
+          <td class="num">{{ t.surface_ha|default_if_none:"—"|floatformat:"-2" }}</td>
+          <td class="num">{{ t.delai_avant_recolte|default_if_none:"—" }}</td>
+          <td>{{ t.operateur|default:"—" }}</td>
+          <td>{{ t.conditions|default:"—" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="11">{% trans "Aucun traitement enregistré sur cette campagne." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if bilan.observations %}
+    <h2>{% trans "Observations sanitaires" %}</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>{% trans "Date" %}</th>
+          <th>{% trans "Parcelle" %}</th>
+          <th>{% trans "Type" %}</th>
+          <th>{% trans "Nom" %}</th>
+          <th>{% trans "Intensité" %}</th>
+          <th>{% trans "Notes" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for o in bilan.observations %}
+          <tr>
+            <td>{{ o.date|date:"d/m/Y" }}</td>
+            <td>{{ o.parcelle.name }}</td>
+            <td>{{ o.get_type_cible_display }}</td>
+            <td>{{ o.nom }}</td>
+            <td>{{ o.get_intensite_display }}</td>
+            <td>{{ o.notes|default:"" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+
+  <p class="pied">
+    {% trans "Registre établi depuis Isidor à partir des traitements enregistrés. Les lignes marquées « à compléter » manquent d'une mention exigée par le registre (AMM, cible ou dose). Le registre se conserve et doit pouvoir être présenté en cas de contrôle ; les conditions d'emploi de chaque produit figurent sur son autorisation de mise sur le marché." %}
+  </p>
+</body>
+</html>

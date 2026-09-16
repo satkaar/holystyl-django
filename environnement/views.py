@@ -1,4 +1,4 @@
-"""Vues web Environnement : pages-cadre + Taxonomie EU."""
+"""Vues web Environnement : bilan azoté, empreinte carbone, biodiversité, Taxonomie EU."""
 
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
@@ -15,7 +15,10 @@ from parcelles.models import Parcelle
 from django.db.models import Avg, Sum
 from django.utils.dateparse import parse_date
 
-from .models import ActiviteTaxonomie, Biodiversite
+from . import (azote as azote_service, carbone as carbone_service,
+               rapport as rapport_service, sante as sante_service)
+from .models import (ActiviteTaxonomie, ApportAzote, Biodiversite, ObservationSanitaire,
+                     PosteCarbone, Traitement)
 
 
 
@@ -134,30 +137,325 @@ def bilan_eau_export(request):
 
 @login_required
 def bilan_azote(request):
-    return _page(request, _("Bilan azoté"), "science", _(
-        "Bilan azoté (méthode du bilan) : entrées, exports par les cultures, "
-        "reliquats et pression sur la directive Nitrates."))
+    """Les apports d'azote d'une campagne, et la pression sur le plafond 170."""
+    exploitation = _exploitation(request)
+    campagnes = azote_service.campagnes(exploitation)
+    campagne = request.GET.get("campagne") or (campagnes[0] if campagnes else "")
+    if campagne not in campagnes and campagnes:
+        campagne = campagnes[0]
+
+    return render(request, "environnement/bilan_azote.html", {
+        "bilan": azote_service.bilan(exploitation, campagne),
+        "campagne": campagne,
+        "campagnes": campagnes,
+        "natures": ApportAzote.Nature.choices,
+        "parcelles": (Parcelle.objects.filter(exploitation=exploitation)
+                      if exploitation else Parcelle.objects.none()),
+        "today": timezone.localdate().isoformat(),
+        "page_title": _("Bilan azoté"),
+    })
+
+
+def _apport_depuis(request, apport, exploitation):
+    """Applique la saisie à un apport. False si la parcelle n'est pas la nôtre."""
+    parcelle = Parcelle.objects.filter(pk=request.POST.get("parcelle"), exploitation=exploitation).first()
+    if not parcelle:
+        return False
+    nature = request.POST.get("nature")
+    apport.parcelle = parcelle
+    apport.date = parse_date(request.POST.get("date") or "") or timezone.localdate()
+    apport.nature = nature if nature in ApportAzote.Nature.values else ApportAzote.Nature.MINERAL
+    apport.produit = (request.POST.get("produit") or "").strip()[:255]
+    apport.dose_kg_ha = max(0, _to_float(request.POST.get("dose_kg_ha"), 0) or 0)
+    apport.teneur_n_pct = min(100, max(0, _to_float(request.POST.get("teneur_n_pct"), 0) or 0))
+    apport.surface_ha = _to_float(request.POST.get("surface_ha"))
+    apport.notes = (request.POST.get("notes") or "").strip()
+    # La campagne suit la date : corriger la date d'un apport le range ailleurs.
+    apport.campagne = ""
+    apport.save()
+    return True
+
+
+@login_required
+@require_POST
+def apport_azote_save(request, pk=None):
+    exploitation = _exploitation(request, create=True)
+    apport = (get_object_or_404(ApportAzote, pk=pk, exploitation=exploitation)
+              if pk else ApportAzote(exploitation=exploitation))
+    _apport_depuis(request, apport, exploitation)
+    return redirect(f"{reverse('environnement:bilan_azote')}?campagne={apport.campagne}")
+
+
+@login_required
+@require_POST
+def apport_azote_delete(request, pk):
+    exploitation = _exploitation(request)
+    apport = get_object_or_404(ApportAzote, pk=pk, exploitation=exploitation)
+    campagne = apport.campagne
+    apport.delete()
+    return redirect(f"{reverse('environnement:bilan_azote')}?campagne={campagne}")
+
+
+@login_required
+def cahier_epandage(request):
+    """Le cahier d'épandage de la campagne, en PDF — le document du contrôle."""
+    exploitation = _exploitation(request)
+    campagnes = azote_service.campagnes(exploitation)
+    campagne = request.GET.get("campagne") or (campagnes[0] if campagnes else "")
+    contexte = {
+        "bilan": azote_service.bilan(exploitation, campagne),
+        "campagne": campagne,
+        "exploitation": exploitation,
+        "edite_le": timezone.localdate(),
+    }
+    html = render(request, "environnement/cahier_epandage_pdf.html", contexte).content.decode()
+
+    try:
+        from weasyprint import HTML
+    except Exception:  # noqa: BLE001 — libs système absentes : on rend la page
+        return render(request, "environnement/cahier_epandage_pdf.html", contexte)
+
+    from django.http import HttpResponse
+
+    pdf = HTML(string=html, base_url=request.build_absolute_uri("/")).write_pdf()
+    reponse = HttpResponse(pdf, content_type="application/pdf")
+    reponse["Content-Disposition"] = (
+        'inline; filename="cahier-epandage-%s.pdf"' % (campagne or "").replace("/", "-"))
+    return reponse
 
 
 @login_required
 def empreinte_carbone(request):
-    return _page(request, _("Empreinte carbone"), "cloud", _(
-        "Émissions de gaz à effet de serre de l'exploitation et stockage carbone "
-        "des sols (diagnostic type GES / label bas-carbone)."))
+    """Les émissions de la campagne, poste par poste, et le carbone stocké."""
+    exploitation = _exploitation(request)
+    campagnes = carbone_service.campagnes(exploitation)
+    campagne = request.GET.get("campagne") or (campagnes[0] if campagnes else "")
+    if campagne not in campagnes and campagnes:
+        campagne = campagnes[0]
+
+    return render(request, "environnement/empreinte_carbone.html", {
+        "bilan": carbone_service.bilan(exploitation, campagne),
+        "campagne": campagne,
+        "campagnes": campagnes,
+        "postes": PosteCarbone.Poste.choices,
+        # `json_script` sérialise lui-même : lui passer du JSON en ferait une
+        # chaîne, et le gabarit attend une liste.
+        "catalogue": carbone_service.catalogue(),
+        "page_title": _("Empreinte carbone"),
+    })
+
+
+@login_required
+@require_POST
+def poste_carbone_save(request, pk=None):
+    exploitation = _exploitation(request, create=True)
+    poste = (get_object_or_404(PosteCarbone, pk=pk, exploitation=exploitation)
+             if pk else PosteCarbone(exploitation=exploitation))
+    campagne = (request.POST.get("campagne") or "").strip()[:20]
+    libelle = (request.POST.get("libelle") or "").strip()[:255]
+    if not (campagne and libelle):
+        return redirect("environnement:empreinte_carbone")
+
+    choix = request.POST.get("poste")
+    poste.campagne = campagne
+    poste.libelle = libelle
+    poste.poste = choix if choix in PosteCarbone.Poste.values else PosteCarbone.Poste.AUTRE
+    poste.quantite = _to_float(request.POST.get("quantite"), 0) or 0
+    poste.unite = (request.POST.get("unite") or "").strip()[:30]
+    poste.facteur = _to_float(request.POST.get("facteur"), 0) or 0
+    poste.source_facteur = (request.POST.get("source_facteur") or "").strip()[:255]
+    poste.notes = (request.POST.get("notes") or "").strip()
+    poste.save()
+    return redirect(f"{reverse('environnement:empreinte_carbone')}?campagne={poste.campagne}")
+
+
+@login_required
+@require_POST
+def poste_carbone_delete(request, pk):
+    exploitation = _exploitation(request)
+    poste = get_object_or_404(PosteCarbone, pk=pk, exploitation=exploitation)
+    campagne = poste.campagne
+    poste.delete()
+    return redirect(f"{reverse('environnement:empreinte_carbone')}?campagne={campagne}")
+
+
+def _synthese(request):
+    """La synthèse de la campagne demandée, et la liste des campagnes."""
+    exploitation = _exploitation(request)
+    campagnes = rapport_service.campagnes(exploitation)
+    campagne = request.GET.get("campagne") or (campagnes[0] if campagnes else "")
+    if campagne not in campagnes and campagnes:
+        campagne = campagnes[0]
+    return exploitation, campagnes, campagne, rapport_service.synthese(exploitation, campagne)
 
 
 @login_required
 def rapport_environnemental(request):
-    return _page(request, _("Rapport environnemental"), "assessment", _(
-        "Synthèse environnementale de l'exploitation, exportable, regroupant les "
-        "indicateurs (eau, azote, carbone, biodiversité)."))
+    """Eau, azote, carbone, biodiversité et Taxonomie, réunis pour une campagne."""
+    _exp, campagnes, campagne, synthese = _synthese(request)
+    return render(request, "environnement/rapport.html", {
+        "synthese": synthese,
+        "manquantes": rapport_service.rubriques_manquantes(synthese),
+        "campagne": campagne,
+        "campagnes": campagnes,
+        "page_title": _("Rapport environnemental"),
+    })
+
+
+@login_required
+def rapport_environnemental_pdf(request):
+    """Le rapport en PDF : ce qu'on remet à une coopérative ou à une banque."""
+    _exp, _campagnes, campagne, synthese = _synthese(request)
+    contexte = {
+        "synthese": synthese,
+        "manquantes": rapport_service.rubriques_manquantes(synthese),
+        "campagne": campagne,
+        "edite_le": timezone.localdate(),
+    }
+    html = render(request, "environnement/rapport_pdf.html", contexte).content.decode()
+
+    try:
+        from weasyprint import HTML
+    except Exception:  # noqa: BLE001 — libs système absentes : on rend la page
+        return render(request, "environnement/rapport_pdf.html", contexte)
+
+    from django.http import HttpResponse
+
+    pdf = HTML(string=html, base_url=request.build_absolute_uri("/")).write_pdf()
+    reponse = HttpResponse(pdf, content_type="application/pdf")
+    reponse["Content-Disposition"] = (
+        'inline; filename="rapport-environnemental-%s.pdf"' % (campagne or "").replace("/", "-"))
+    return reponse
 
 
 @login_required
 def sante_vegetale(request):
-    return _page(request, _("Santé végétale"), "local_florist", _(
-        "Suivi sanitaire des cultures : maladies, ravageurs, observations et "
-        "indicateurs de fréquence de traitement (IFT)."))
+    """Le registre des traitements de la campagne, et les observations."""
+    exploitation = _exploitation(request)
+    campagnes = sante_service.campagnes(exploitation)
+    campagne = request.GET.get("campagne") or (campagnes[0] if campagnes else "")
+    if campagne not in campagnes and campagnes:
+        campagne = campagnes[0]
+
+    return render(request, "environnement/sante_vegetale.html", {
+        "bilan": sante_service.bilan(exploitation, campagne),
+        "campagne": campagne,
+        "campagnes": campagnes,
+        "cibles": Traitement.Cible.choices,
+        "intensites": ObservationSanitaire.Intensite.choices,
+        "parcelles": (Parcelle.objects.filter(exploitation=exploitation)
+                      if exploitation else Parcelle.objects.none()),
+        "today": timezone.localdate().isoformat(),
+        "page_title": _("Santé végétale"),
+    })
+
+
+def _retour_sante(campagne):
+    return redirect(f"{reverse('environnement:sante_vegetale')}?campagne={campagne}")
+
+
+@login_required
+@require_POST
+def traitement_save(request, pk=None):
+    exploitation = _exploitation(request, create=True)
+    traitement = (get_object_or_404(Traitement, pk=pk, exploitation=exploitation)
+                  if pk else Traitement(exploitation=exploitation))
+    parcelle = Parcelle.objects.filter(pk=request.POST.get("parcelle"), exploitation=exploitation).first()
+    produit = (request.POST.get("produit") or "").strip()[:255]
+    if not (parcelle and produit):
+        return _retour_sante(request.POST.get("campagne") or "")
+
+    cible = request.POST.get("type_cible")
+    traitement.parcelle = parcelle
+    traitement.produit = produit
+    traitement.date = parse_date(request.POST.get("date") or "") or timezone.localdate()
+    traitement.campagne = ""  # la campagne suit la date
+    traitement.culture = (request.POST.get("culture") or "").strip()[:100]
+    traitement.numero_amm = (request.POST.get("numero_amm") or "").strip()[:20]
+    traitement.type_cible = cible if cible in Traitement.Cible.values else Traitement.Cible.MALADIE
+    traitement.cible = (request.POST.get("cible") or "").strip()[:255]
+    traitement.dose = _to_float(request.POST.get("dose"))
+    traitement.unite_dose = (request.POST.get("unite_dose") or "").strip()[:20]
+    traitement.surface_ha = _to_float(request.POST.get("surface_ha"))
+    delai = _to_float(request.POST.get("delai_avant_recolte"))
+    traitement.delai_avant_recolte = int(delai) if delai is not None and delai >= 0 else None
+    traitement.operateur = (request.POST.get("operateur") or "").strip()[:255]
+    traitement.conditions = (request.POST.get("conditions") or "").strip()[:255]
+    traitement.notes = (request.POST.get("notes") or "").strip()
+    traitement.save()
+    return _retour_sante(traitement.campagne)
+
+
+@login_required
+@require_POST
+def traitement_delete(request, pk):
+    exploitation = _exploitation(request)
+    traitement = get_object_or_404(Traitement, pk=pk, exploitation=exploitation)
+    campagne = traitement.campagne
+    traitement.delete()
+    return _retour_sante(campagne)
+
+
+@login_required
+@require_POST
+def observation_save(request, pk=None):
+    exploitation = _exploitation(request, create=True)
+    observation = (get_object_or_404(ObservationSanitaire, pk=pk, exploitation=exploitation)
+                   if pk else ObservationSanitaire(exploitation=exploitation))
+    parcelle = Parcelle.objects.filter(pk=request.POST.get("parcelle"), exploitation=exploitation).first()
+    nom = (request.POST.get("nom") or "").strip()[:255]
+    if not (parcelle and nom):
+        return _retour_sante(request.POST.get("campagne") or "")
+
+    cible = request.POST.get("type_cible")
+    intensite = _to_float(request.POST.get("intensite"), 1)
+    observation.parcelle = parcelle
+    observation.nom = nom
+    observation.date = parse_date(request.POST.get("date") or "") or timezone.localdate()
+    observation.campagne = ""
+    observation.type_cible = cible if cible in Traitement.Cible.values else Traitement.Cible.MALADIE
+    observation.intensite = int(intensite) if intensite in (0, 1, 2, 3) else 1
+    observation.notes = (request.POST.get("notes") or "").strip()
+    observation.save()
+    return _retour_sante(observation.campagne)
+
+
+@login_required
+@require_POST
+def observation_delete(request, pk):
+    exploitation = _exploitation(request)
+    observation = get_object_or_404(ObservationSanitaire, pk=pk, exploitation=exploitation)
+    campagne = observation.campagne
+    observation.delete()
+    return _retour_sante(campagne)
+
+
+@login_required
+def registre_phyto(request):
+    """Le registre des traitements en PDF — celui qu'on présente au contrôle."""
+    exploitation = _exploitation(request)
+    campagnes = sante_service.campagnes(exploitation)
+    campagne = request.GET.get("campagne") or (campagnes[0] if campagnes else "")
+    contexte = {
+        "bilan": sante_service.bilan(exploitation, campagne),
+        "campagne": campagne,
+        "exploitation": exploitation,
+        "edite_le": timezone.localdate(),
+    }
+    html = render(request, "environnement/registre_phyto_pdf.html", contexte).content.decode()
+
+    try:
+        from weasyprint import HTML
+    except Exception:  # noqa: BLE001 — libs système absentes : on rend la page
+        return render(request, "environnement/registre_phyto_pdf.html", contexte)
+
+    from django.http import HttpResponse
+
+    pdf = HTML(string=html, base_url=request.build_absolute_uri("/")).write_pdf()
+    reponse = HttpResponse(pdf, content_type="application/pdf")
+    reponse["Content-Disposition"] = (
+        'inline; filename="registre-phytosanitaire-%s.pdf"' % (campagne or "").replace("/", "-"))
+    return reponse
 
 
 # ── Taxonomie EU ────────────────────────────────────────────────────

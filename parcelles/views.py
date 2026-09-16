@@ -18,7 +18,7 @@ from django.views.decorators.http import require_POST
 from exploitations.models import Exploitation
 from irrigation import satellite, teledetection
 
-from . import carte, geometrie
+from . import analyse, carte, geometrie
 from .forms import ParcelleCampagneForm, ParcelleForm, ParcelleTypeAgricultureForm
 from .models import Parcelle, ParcelleCampagne
 
@@ -490,7 +490,10 @@ def parcelle_edit(request, pk):
         request,
         "parcelles/form.html",
         {"form": form, "campagne_form": campagne_form, "parcelle": parcelle,
-         "page_title": _("Modifier %(n)s") % {"n": parcelle.name}},
+         "page_title": _("Modifier %(n)s") % {"n": parcelle.name},
+         # Ce que la parcelle a produit et le temps qu'elle a demandé : on modifie une fiche
+         # en ayant sous les yeux ce qu'elle a donné.
+         **analyse.synthese(parcelle)},
     )
 
 

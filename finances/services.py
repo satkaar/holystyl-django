@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from irrigation.models import DtiScore, EnergyLog, WaterMeter
 
-from .models import Charge, Facture, Revenu
+from .models import Charge, Facture, Recolte, Revenu
 
 
 def prochain_numero(exploitation, modele=Facture, lettre="F") -> str:
@@ -83,4 +83,64 @@ def subvention_context(exploitation, export_type: str, year: int | None = None) 
         "bilan": asdict(bilan),
         "dti": latest_dti,
         "parcelles": exploitation.parcelles.all(),
+    }
+
+
+# --- Rendements d'une parcelle ----------------------------------------------------------------
+# Les récoltes vivent ici (`Recolte`) : c'est donc ici qu'on les agrège, pour que la fiche
+# parcelle, le stock et le bilan lisent tous le même calcul.
+
+def _libelle_campagne(date):
+    """Campagne agricole d'une date : septembre → septembre (« 2025/2026 »)."""
+    from parcelles.models import ParcelleCampagne
+
+    return ParcelleCampagne.libelle_courant(timezone.localtime(date).date())
+
+
+def rendements_par_parcelle(parcelle, campagnes_max=5):
+    """Ce que la parcelle a produit, campagne par campagne.
+
+    Rendement = kilos récoltés ÷ surface. Sans surface connue, il reste vide plutôt que faux.
+    Renvoie la campagne la plus récente en premier.
+    """
+    recoltes = list(parcelle.recoltes.all())  # ordonnées de la plus récente à la plus ancienne
+    surface = parcelle.area or 0
+    qualites = dict(Recolte.Qualite.choices)
+
+    par_campagne = {}
+    for recolte in recoltes:
+        campagne = par_campagne.setdefault(
+            _libelle_campagne(recolte.date),
+            {"libelle": "", "kg": 0.0, "valorisation": 0.0, "nombre": 0, "qualites": {}},
+        )
+        campagne["libelle"] = _libelle_campagne(recolte.date)
+        campagne["kg"] += recolte.quantite_kg or 0
+        campagne["valorisation"] += (recolte.quantite_kg or 0) * (recolte.prix_unitaire or 0)
+        campagne["nombre"] += 1
+        libelle_qualite = qualites.get(recolte.qualite, recolte.qualite)
+        campagne["qualites"][libelle_qualite] = campagne["qualites"].get(libelle_qualite, 0) + (recolte.quantite_kg or 0)
+
+    lignes = sorted(par_campagne.values(), key=lambda c: c["libelle"], reverse=True)[:campagnes_max]
+    for ligne in lignes:
+        ligne["kg"] = round(ligne["kg"], 1)
+        ligne["valorisation"] = round(ligne["valorisation"], 2)
+        ligne["rendement"] = round(ligne["kg"] / surface, 1) if surface else None
+        ligne["prix_moyen"] = round(ligne["valorisation"] / ligne["kg"], 2) if ligne["kg"] else None
+        ligne["qualites"] = sorted(
+            ({"libelle": q, "kg": round(kg, 1), "part": round(kg / ligne["kg"] * 100)} for q, kg in ligne["qualites"].items()),
+            key=lambda q: q["kg"], reverse=True,
+        )
+
+    courante, precedente = (lignes + [None, None])[0], (lignes + [None, None])[1]
+    variation = None
+    if courante and precedente and precedente["kg"]:
+        variation = round((courante["kg"] - precedente["kg"]) / precedente["kg"] * 100)
+    return {
+        "campagnes": lignes,
+        "courante": courante,
+        "variation": variation,
+        "total_kg": round(sum(r.quantite_kg or 0 for r in recoltes), 1),
+        "total_valorisation": round(sum((r.quantite_kg or 0) * (r.prix_unitaire or 0) for r in recoltes), 2),
+        "dernieres": recoltes[:5],
+        "surface": surface,
     }

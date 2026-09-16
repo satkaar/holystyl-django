@@ -22,21 +22,25 @@
     </div>
   </div>
 
-  {# ── Quota azote (Directive Nitrates) ── #}
+  {% comment %}Le plafond des 170 kg ne se juge pas ici : il porte sur l'azote
+  organique des effluents d'élevage, rapporté à la SAU et à une campagne, quand
+  cette page ne connaît que la fertigation. La jauge qui vivait ici comparait
+  la somme de tous les apports, toutes années confondues, à ce plafond — elle
+  rassurait à tort. Le suivi est au Bilan azoté.{% endcomment %}
   <div id="quota" class="hs-card p-5">
-    <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-      <h2 class="text-[15px] font-medium">{% trans "Directive Nitrates 91/676/CEE" %}</h2>
-      <span class="text-[13px]" style="color: var(--text-secondary)">{{ total_n }} / {{ plafond_n }} kg N/ha/an</span>
-    </div>
-    <div class="h-2.5 overflow-hidden rounded-full" style="background: var(--surface-alt)">
-      <div class="h-full rounded-full" style="width: {{ pct_n }}%; background: var(--success)"></div>
-    </div>
-    <div class="mt-2 flex items-center justify-between text-[12px]">
-      <span class="font-medium" style="color: var(--success)">{{ pct_n|floatformat:0 }}% {% trans "du plafond" %}</span>
-      <span style="color: var(--text-muted)">0 → {{ plafond_n }} kg</span>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="min-w-0">
+        <h2 class="text-[15px] font-medium">{% trans "Azote apporté par fertigation" %}</h2>
+        <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+          {% blocktrans %}{{ total_n }} kg N cumulés sur les apports enregistrés ici.{% endblocktrans %}
+        </p>
+      </div>
+      <a href="{% url 'environnement:bilan_azote' %}" class="hs-btn-outline shrink-0">
+        <span class="material-icons-round text-[18px]">science</span>{% trans "Bilan azoté" %}
+      </a>
     </div>
     <p class="mt-3 text-[12px]" style="color: var(--text-secondary)">
-      {% trans "Plafond 170 kg N/ha/an en zone vulnérable. Le système suit automatiquement vos apports cumulés." %}
+      {% trans "Le plafond de 170 kg N/ha/an de la directive Nitrates vise l'azote organique issu des effluents d'élevage, rapporté à la SAU et à la campagne. Il se suit sur le Bilan azoté, qui reprend ces fertigations." %}
     </p>
   </div>
 
