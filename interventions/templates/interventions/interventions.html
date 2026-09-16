@@ -3,7 +3,7 @@
 
 {% block content %}
 {{ interventions_json|json_script:"interventions-data" }}
-<section class="space-y-5"
+<section class="hs-contraste space-y-5 pb-6"
   x-data="{
     filter: 'all',
     modal: false,
@@ -23,9 +23,16 @@
 
   <p class="hs-crumb">{% trans "Cultures & Élevage" %} · {% trans "Interventions" %}</p>
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <h1 class="text-[20px]">{% trans "Interventions" %}</h1>
+    <div>
+      <h1 class="text-[20px]">{% trans "Interventions" %}</h1>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        {% trans "Le journal des opérations culturales, parcelle par parcelle." %}
+      </p>
+    </div>
     <div class="flex items-center gap-2">
-      <button type="button" @click="modal = true" class="hs-btn-primary">{% trans "Enregistrer" %}</button>
+      <button type="button" @click="modal = true" class="hs-btn-primary">
+        <span class="material-icons-round text-[18px]">add</span>{% trans "Enregistrer une intervention" %}
+      </button>
     </div>
   </div>
 
@@ -42,22 +49,32 @@
   </div>
 
   {# ── Journal ── #}
-  <div class="flex flex-wrap items-center justify-between gap-2">
-    <h2 class="text-[15px] font-medium">{% trans "Journal des interventions" %}</h2>
-    <button type="button" @click="filter = 'all'" class="hs-tab" :class="filter === 'all' && 'hs-tab-active'">
-      {% trans "Toutes" %} (<span x-text="filtered.length"></span>)
-    </button>
-  </div>
+  <div class="hs-panel">
+    <div class="hs-panel-head justify-between">
+      <div class="flex min-w-0 items-center gap-3">
+        <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">history_edu</span></span>
+        <div class="min-w-0">
+          <p class="hs-panel-title">{% trans "Journal des interventions" %}</p>
+          <p class="hs-panel-sub">
+            <span x-text="filtered.length"></span>
+            <span x-show="filter === 'all'">{% trans "intervention(s) enregistrée(s)" %}</span>
+            <span x-show="filter !== 'all'" x-cloak>{% trans "pour le filtre choisi" %}</span>
+          </p>
+        </div>
+      </div>
+      <button type="button" x-show="filter !== 'all'" x-cloak @click="filter = 'all'" class="hs-btn-outline shrink-0">
+        <span class="material-icons-round text-[16px]">close</span>{% trans "Tout voir" %}
+      </button>
+    </div>
 
-  <div class="hs-card overflow-hidden">
     {# Liste #}
     <div x-show="filtered.length">
       <template x-for="(r, i) in filtered" :key="i">
-        <div class="flex items-center gap-3 px-4 py-3" style="border-top: 0.5px solid var(--border)">
+        <div class="flex items-center gap-3 px-5 py-3" style="border-top: 1px solid var(--border-strong)">
           <span class="shrink-0 rounded-full px-2.5 py-0.5 text-[11px] font-medium" :class="badge(r.type)" x-text="r.typeLabel"></span>
           <div class="min-w-0 flex-1">
             <p class="truncate font-medium" x-text="r.title"></p>
-            <p class="truncate text-xs" style="color: var(--text-muted)"><span x-text="r.date"></span><template x-if="r.parcelle"> · <span x-text="r.parcelle"></span></template><template x-if="r.assignee"> · <span x-text="r.assignee"></span></template></p>
+            <p class="truncate text-xs" style="color: var(--text-secondary)"><span x-text="r.date"></span><template x-if="r.parcelle"> · <span x-text="r.parcelle"></span></template><template x-if="r.assignee"> · <span x-text="r.assignee"></span></template></p>
           </div>
           <span class="shrink-0 text-xs" style="color: var(--text-secondary)" x-text="r.status"></span>
         </div>
@@ -65,93 +82,154 @@
     </div>
 
     {# État vide — aucune donnée #}
-    <div x-show="!rows.length" class="px-4 py-12 text-center">
+    <div x-show="!rows.length" class="px-5 py-12 text-center">
       <p class="text-[15px] font-medium">{% trans "Enregistrez votre première intervention" %}</p>
       <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">{% trans "Le journal des opérations culturales apparaîtra ici." %}</p>
       <button type="button" @click="modal = true" class="hs-btn-primary mt-4">{% trans "Enregistrer une intervention" %}</button>
     </div>
 
     {# État vide — filtre sans résultat #}
-    <div x-show="rows.length && !filtered.length" class="px-4 py-8 text-center text-[13px]" style="color: var(--text-secondary)">
+    <div x-show="rows.length && !filtered.length" class="px-5 py-8 text-center text-[13px]" style="color: var(--text-secondary)">
       {% trans "Aucune intervention pour ce filtre." %}
     </div>
   </div>
 
-  {# Modal — Enregistrer une intervention #}
+  {% comment %}Saisie en plein écran. `margin: 0` : la liste espace ses
+  enfants, et cette marge décalerait la fenêtre. Le fond est porté par
+  l'intérieur, pour que la navigation reste visible sous son voile.
+  {% endcomment %}
   <div x-show="modal" x-cloak x-transition.opacity @keydown.escape.window="modal = false"
-       class="fixed inset-0 z-40 flex justify-center bg-black/40 p-4 lg:pl-[var(--nav-offset)] sm:items-center">
-    <div @click.self="modal = false" class="flex max-h-full w-full max-w-5xl items-start justify-center">
-      <div class="hs-popover w-full max-w-5xl overflow-y-auto p-5">
-        <div class="mb-4 flex items-center gap-3">
-          <h3 class="flex-1 text-[15px] font-medium">{% trans "Nouvelle intervention" %}</h3>
-          <button type="button" @click="modal = false" class="grid h-8 w-8 place-items-center rounded-full hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-secondary)">✕</button>
-        </div>
+       class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)"
+       role="dialog" aria-modal="true" aria-labelledby="intervention-titre">
+    <div class="min-h-screen" style="background: var(--page)">
 
-        <form method="post" action="{% url 'interventions:intervention_create' %}" class="space-y-3">
-          {% csrf_token %}
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label for="intervention-parcelle" class="mb-1 block text-sm font-medium">{% trans "Parcelle" %} <span style="color: var(--danger)">*</span></label>
-              <select id="intervention-parcelle" name="parcelle" required
-                      @change="$refs.surface.value = ($event.target.selectedOptions[0]?.dataset.area) || ''"
-                      class="w-full">
-                <option value="">{% trans "Sélectionner une parcelle" %}</option>
-                {% for p in parcelles %}<option value="{{ p.pk }}" data-area="{{ p.area|default_if_none:''|unlocalize }}">{{ p.name }}{% if p.area %} · {{ p.area }} ha{% endif %}</option>{% endfor %}
-              </select>
-            </div>
-            <div>
-              <label for="intervention-assigned" class="mb-1 block text-sm font-medium">{% trans "Assigné à" %}</label>
-              <select id="intervention-assigned" name="assigned_to" class="w-full">
-                <option value="">{% trans "Personne" %}</option>
-                {% for m in members %}<option value="{{ m.pk }}">{{ m.name }}</option>{% endfor %}
-              </select>
-              <p class="mt-1 text-xs" style="color: var(--text-secondary)">{% trans "Crée une tâche liée dans « Tâches »." %}</p>
-            </div>
+      <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+           style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+        <div class="flex min-w-0 items-center gap-3">
+          <button type="button" @click="modal = false" title="{% trans 'Fermer' %}"
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+            <span class="material-icons-round text-[22px]">arrow_back</span>
+          </button>
+          <div class="min-w-0">
+            <h2 id="intervention-titre" class="truncate text-[20px]">{% trans "Nouvelle intervention" %}</h2>
+            <p class="hs-panel-sub">{% trans "Ce qui a été fait, où, par qui et avec quoi." %}</p>
           </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label for="intervention-type" class="mb-1 block text-sm font-medium">{% trans "Type d'intervention" %}</label>
-              <select id="intervention-type" name="intervention_type" required class="w-full">
-                {% for value, label in types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-              </select>
-            </div>
-            <div>
-              <label for="intervention-start" class="mb-1 block text-sm font-medium">{% trans "Date et heure" %} <span style="color: var(--danger)">*</span></label>
-              <input id="intervention-start" name="start_time" type="datetime-local" required class="w-full">
-            </div>
-          </div>
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label for="intervention-duration" class="mb-1 block text-sm font-medium">{% trans "Durée (heures)" %}</label>
-              <input id="intervention-duration" name="duration_hours" type="number" step="0.5" min="0" inputmode="decimal" placeholder="{% trans 'ex: 3.5' %}" class="w-full">
-            </div>
-            <div>
-              <label for="intervention-surface" class="mb-1 block text-sm font-medium">{% trans "Surface (ha)" %}</label>
-              <input id="intervention-surface" name="surface" x-ref="surface" type="number" step="0.1" min="0" inputmode="decimal" placeholder="{% trans 'ex: 4.2' %}" class="w-full">
-            </div>
-          </div>
-          <div>
-            <label for="intervention-cost" class="mb-1 block text-sm font-medium">{% trans "Coût (€)" %}</label>
-            <input id="intervention-cost" name="cost" type="number" step="0.01" min="0" inputmode="decimal" placeholder="{% trans 'ex: 150' %}" class="w-full">
-          </div>
-          <div>
-            <label for="intervention-product" class="mb-1 block text-sm font-medium">{% trans "Produit utilisé" %}</label>
-            <input id="intervention-product" name="product" placeholder="{% trans 'ex: Bouillie bordelaise' %}" class="w-full">
-          </div>
-          <div>
-            <label for="intervention-dose" class="mb-1 block text-sm font-medium">{% trans "Dose" %}</label>
-            <input id="intervention-dose" name="dose" placeholder="{% trans 'ex: 2 kg/hL' %}" class="w-full">
-          </div>
-          <div>
-            <label for="intervention-notes" class="mb-1 block text-sm font-medium">{% trans "Notes" %}</label>
-            <textarea id="intervention-notes" name="notes" rows="2" placeholder="{% trans 'Observations, conditions...' %}" class="w-full"></textarea>
-          </div>
-          <div class="flex justify-end gap-2 pt-1">
-            <button type="button" @click="modal = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
-            <button type="submit" class="hs-btn-primary">{% trans "Enregistrer" %}</button>
-          </div>
-        </form>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" @click="modal = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+          <button type="submit" form="intervention-form" class="hs-btn-primary">
+            <span class="material-icons-round text-[18px]">save</span>{% trans "Enregistrer" %}
+          </button>
+        </div>
       </div>
+
+      <form id="intervention-form" method="post" action="{% url 'interventions:intervention_create' %}" class="px-5 py-5 pb-8">
+        {% csrf_token %}
+        <div class="grid items-start gap-5 xl:grid-cols-2">
+
+          <div class="space-y-5">
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">agriculture</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "L'intervention" %}</p>
+                  <p class="hs-panel-sub">{% trans "Où elle a eu lieu, de quel type, et quand." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label for="intervention-parcelle" class="mb-1.5 block text-sm font-medium">{% trans "Parcelle" %} <span style="color: var(--danger)">*</span></label>
+                  <select id="intervention-parcelle" name="parcelle" required
+                          @change="$refs.surface.value = ($event.target.selectedOptions[0]?.dataset.area) || ''">
+                    <option value="">{% trans "Sélectionner une parcelle" %}</option>
+                    {% for p in parcelles %}<option value="{{ p.pk }}" data-area="{{ p.area|default_if_none:''|unlocalize }}">{{ p.name }}{% if p.area %} · {{ p.area }} ha{% endif %}</option>{% endfor %}
+                  </select>
+                  <p class="mt-1 text-xs" style="color: var(--text-secondary)">{% trans "La surface de la parcelle se reporte plus bas." %}</p>
+                </div>
+                <div>
+                  <label for="intervention-type" class="mb-1.5 block text-sm font-medium">{% trans "Type d'intervention" %}</label>
+                  <select id="intervention-type" name="intervention_type" required>
+                    {% for value, label in types %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <label for="intervention-start" class="mb-1.5 block text-sm font-medium">{% trans "Date et heure" %} <span style="color: var(--danger)">*</span></label>
+                  <input id="intervention-start" name="start_time" type="datetime-local" required>
+                </div>
+                <div>
+                  <label for="intervention-assigned" class="mb-1.5 block text-sm font-medium">{% trans "Assigné à" %}</label>
+                  <select id="intervention-assigned" name="assigned_to">
+                    <option value="">{% trans "Personne" %}</option>
+                    {% for m in members %}<option value="{{ m.pk }}">{{ m.name }}</option>{% endfor %}
+                  </select>
+                  <p class="mt-1 text-xs" style="color: var(--text-secondary)">{% trans "Crée une tâche liée dans « Tâches »." %}</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">timer</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Le chantier" %}</p>
+                  <p class="hs-panel-sub">{% trans "Ce qu'il a coûté en temps, en surface et en argent." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body grid gap-4 sm:grid-cols-3">
+                <div>
+                  <label for="intervention-duration" class="mb-1.5 block text-sm font-medium">{% trans "Durée (heures)" %}</label>
+                  <input id="intervention-duration" name="duration_hours" type="number" step="0.5" min="0" inputmode="decimal" placeholder="{% trans 'ex: 3.5' %}">
+                </div>
+                <div>
+                  <label for="intervention-surface" class="mb-1.5 block text-sm font-medium">{% trans "Surface (ha)" %}</label>
+                  <input id="intervention-surface" name="surface" x-ref="surface" type="number" step="0.1" min="0" inputmode="decimal" placeholder="{% trans 'ex: 4.2' %}">
+                </div>
+                <div>
+                  <label for="intervention-cost" class="mb-1.5 block text-sm font-medium">{% trans "Coût (€)" %}</label>
+                  <input id="intervention-cost" name="cost" type="number" step="0.01" min="0" inputmode="decimal" placeholder="{% trans 'ex: 150' %}">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-5">
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">science</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Produit" %}</p>
+                  <p class="hs-panel-sub">{% trans "Ce qui a été appliqué, et à quelle dose." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label for="intervention-product" class="mb-1.5 block text-sm font-medium">{% trans "Produit utilisé" %}</label>
+                  <input id="intervention-product" name="product" placeholder="{% trans 'ex: Bouillie bordelaise' %}">
+                </div>
+                <div>
+                  <label for="intervention-dose" class="mb-1.5 block text-sm font-medium">{% trans "Dose" %}</label>
+                  <input id="intervention-dose" name="dose" placeholder="{% trans 'ex: 2 kg/hL' %}">
+                </div>
+              </div>
+            </div>
+
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">sticky_note_2</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Notes" %}</p>
+                  <p class="hs-panel-sub">{% trans "Conditions, observations, ce qu'il faudra se rappeler." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body">
+                <label for="intervention-notes" class="sr-only">{% trans "Notes" %}</label>
+                <textarea id="intervention-notes" name="notes" rows="6" placeholder="{% trans 'Observations, conditions...' %}"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
     </div>
   </div>
 </section>

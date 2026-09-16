@@ -143,69 +143,140 @@
     </div>
   </div>
 
-  {# Modale : ajouter / modifier une tâche #}
+  {# ── Ajouter / modifier une tâche : plein écran, rubrique par rubrique ── #}
+  {% comment %}`margin: 0` : la liste espace ses enfants, et cette marge
+  décalerait la fenêtre d'un cran vers le bas. Le fond est porté par
+  l'intérieur — sans quoi il couvrirait la navigation, qui reste visible.
+  {% endcomment %}
   <div x-show="modal" x-cloak x-transition.opacity @keydown.escape.window="modal = false"
-       class="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4 lg:pl-[var(--nav-offset)]">
-    <div @click.self="modal = false" class="my-auto flex w-full max-w-5xl justify-center">
-      <div class="hs-popover w-full p-5">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="text-[17px] font-medium" x-text="editing ? '{% trans "Modifier la tâche" %}' : '{% trans "Nouvelle tâche" %}'">{% trans "Nouvelle tâche" %}</h3>
-          <button type="button" @click="modal = false" class="grid h-8 w-8 place-items-center rounded-full hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-secondary)">
-            <span class="material-icons-round text-[20px]">close</span>
-          </button>
+       class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)" role="dialog" aria-modal="true" aria-labelledby="task-titre">
+   <div class="hs-contraste min-h-screen" style="background: var(--page)">
+
+    {# La barre reste en vue : on enregistre sans remonter toute la page. #}
+    <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+         style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+      <div class="flex min-w-0 items-center gap-3">
+        <button type="button" @click="modal = false" :title="'{% trans "Fermer" %}'"
+                class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+          <span class="material-icons-round text-[22px]">arrow_back</span>
+        </button>
+        <div class="min-w-0">
+          <h2 id="task-titre" class="truncate text-[20px]" x-text="editing ? '{% trans "Modifier la tâche" %}' : '{% trans "Nouvelle tâche" %}'">{% trans "Nouvelle tâche" %}</h2>
+          <p class="hs-panel-sub">{% trans "Ce que l'équipe verra dans son planning." %}</p>
         </div>
-
-        <form id="task-form" method="post" action="{% url 'equipe:taches' %}" class="space-y-4">
-          {% csrf_token %}
-          {% if form.non_field_errors %}
-            <div class="rounded-xl px-4 py-3 text-sm" style="border: 0.5px solid var(--danger); color: var(--danger)">{{ form.non_field_errors }}</div>
-          {% endif %}
-          {% include "accounts/_field.html" with field=form.title ai_contexte=_("Titre d'une tâche de planning agricole") %}
-          <div class="grid gap-4 sm:grid-cols-3">
-            {% include "accounts/_field.html" with field=form.assigned_to %}
-            {% include "accounts/_field.html" with field=form.start_date %}
-            {% include "accounts/_field.html" with field=form.due_date %}
-          </div>
-
-          {# Priorité — pastilles #}
-          <div>
-            <label class="mb-1.5 block text-sm font-medium">{% trans "Priorité" %}</label>
-            <div class="flex flex-wrap gap-2">
-              {% for value, label in priorities %}
-                <button type="button" @click="prio = '{{ value }}'"
-                        class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition hover:bg-black/5 dark:hover:bg-white/10"
-                        :style="prio === '{{ value }}' ? '{% if value == 'haute' %}border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger){% elif value == 'basse' %}border-color: var(--border-strong); background: var(--surface-alt); color: var(--text-secondary){% else %}border-color: var(--action); background: var(--action-subtle); color: var(--action-text){% endif %}' : 'border-color: var(--border); color: var(--text-secondary)'">
-                  <span class="h-2 w-2 rounded-full" style="background: {% if value == 'haute' %}var(--danger){% elif value == 'basse' %}var(--text-muted){% else %}var(--action){% endif %}"></span>{{ label }}
-                </button>
-              {% endfor %}
-            </div>
-            <input type="hidden" name="priority" :value="prio">
-          </div>
-
-          {# Statut — pastilles #}
-          <div>
-            <label class="mb-1.5 block text-sm font-medium">{% trans "Statut" %}</label>
-            <div class="flex flex-wrap gap-2">
-              {% for value, label in statuses %}
-                <button type="button" @click="stat = '{{ value }}'"
-                        class="rounded-full border px-3 py-1.5 text-sm font-medium transition hover:bg-black/5 dark:hover:bg-white/10"
-                        :style="stat === '{{ value }}' ? 'border-color: var(--action); background: var(--action-subtle); color: var(--action-text)' : 'border-color: var(--border); color: var(--text-secondary)'">{{ label }}</button>
-              {% endfor %}
-            </div>
-            <input type="hidden" name="status" :value="stat">
-          </div>
-
-          {% include "partials/_parcelles_selecteur.html" %}
-          {% include "partials/_sous_taches.html" %}
-          {% include "accounts/_field.html" with field=form.description ai_contexte=_("Description d'une tâche de planning agricole") %}
-
-          <div class="flex justify-end gap-2 pt-1">
-            <button type="button" @click="modal = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
-            <button type="submit" class="hs-btn-primary"><span x-text="editing ? '{% trans "Enregistrer" %}' : '{% trans "Ajouter" %}'">{% trans "Ajouter" %}</span></button>
-          </div>
-        </form>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" @click="modal = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+        <button type="submit" form="task-form" class="hs-btn-primary">
+          <span class="material-icons-round text-[18px]">save</span>
+          <span x-text="editing ? '{% trans "Enregistrer" %}' : '{% trans "Ajouter" %}'">{% trans "Ajouter" %}</span>
+        </button>
       </div>
     </div>
+
+    <form id="task-form" method="post" action="{% url 'equipe:taches' %}" class="space-y-5 px-5 py-5 pb-8">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="flex items-start gap-2 rounded-[10px] px-4 py-3 text-sm"
+             style="border: 1px solid var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent)">
+          <span class="material-icons-round text-[18px]">error_outline</span>
+          <div>{{ form.non_field_errors }}</div>
+        </div>
+      {% endif %}
+
+      <div class="grid items-start gap-5 xl:grid-cols-2">
+        <div class="space-y-5">
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">task_alt</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "La tâche" %}</p>
+                <p class="hs-panel-sub">{% trans "Ce qu'il y a à faire, en clair." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body space-y-4">
+              {% include "accounts/_field.html" with field=form.title ai_contexte=_("Titre d'une tâche de planning agricole") %}
+              {% include "accounts/_field.html" with field=form.description ai_contexte=_("Description d'une tâche de planning agricole") %}
+            </div>
+          </div>
+
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">schedule</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "Qui et quand" %}</p>
+                <p class="hs-panel-sub">{% trans "L'assignation, la période, l'urgence et l'avancement." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body space-y-4">
+              <div class="grid gap-4 sm:grid-cols-3">
+                {% include "accounts/_field.html" with field=form.assigned_to %}
+                {% include "accounts/_field.html" with field=form.start_date %}
+                {% include "accounts/_field.html" with field=form.due_date %}
+              </div>
+
+              {# Priorité — pastilles #}
+              <div>
+                <label class="mb-1.5 block text-sm font-medium">{% trans "Priorité" %}</label>
+                <div class="flex flex-wrap gap-2">
+                  {% for value, label in priorities %}
+                    <button type="button" @click="prio = '{{ value }}'"
+                            class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition hover:bg-black/5 dark:hover:bg-white/10"
+                            :style="prio === '{{ value }}' ? '{% if value == 'haute' %}border-color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger){% elif value == 'basse' %}border-color: var(--border-strong); background: var(--surface-alt); color: var(--text-secondary){% else %}border-color: var(--action); background: var(--action-subtle); color: var(--action-text){% endif %}' : 'border-color: var(--border-strong); color: var(--text-secondary)'">
+                      <span class="h-2 w-2 rounded-full" style="background: {% if value == 'haute' %}var(--danger){% elif value == 'basse' %}var(--text-muted){% else %}var(--action){% endif %}"></span>{{ label }}
+                    </button>
+                  {% endfor %}
+                </div>
+                <input type="hidden" name="priority" :value="prio">
+              </div>
+
+              {# Statut — pastilles #}
+              <div>
+                <label class="mb-1.5 block text-sm font-medium">{% trans "Statut" %}</label>
+                <div class="flex flex-wrap gap-2">
+                  {% for value, label in statuses %}
+                    <button type="button" @click="stat = '{{ value }}'"
+                            class="rounded-full border px-3 py-1.5 text-sm font-medium transition hover:bg-black/5 dark:hover:bg-white/10"
+                            :style="stat === '{{ value }}' ? 'border-color: var(--action); background: var(--action-subtle); color: var(--action-text)' : 'border-color: var(--border-strong); color: var(--text-secondary)'">{{ label }}</button>
+                  {% endfor %}
+                </div>
+                <input type="hidden" name="status" :value="stat">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-5">
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">map</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "Où elle se passe" %}</p>
+                <p class="hs-panel-sub">{% trans "Sur la carte ou dans la liste — une tâche peut couvrir plusieurs parcelles." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body">
+              {% include "partials/_parcelles_selecteur.html" %}
+            </div>
+          </div>
+
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">checklist</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "Découpage" %}</p>
+                <p class="hs-panel-sub">{% trans "Une sous-tâche est une tâche à part entière, assignable et datée." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body">
+              {% include "partials/_sous_taches.html" %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+   </div>
   </div>
 </section>
 

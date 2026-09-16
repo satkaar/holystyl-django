@@ -1,31 +1,48 @@
 {% load i18n %}
 {% comment %}
-  Le panneau est centré et c'est lui qui défile : une fiche client est plus
-  haute qu'un écran, et centrer un contenu débordant sur l'écran lui-même en
-  couperait le haut.
+  La fiche client s'édite en plein écran, comme une fiche d'équipe ou une
+  tâche : elle compte trop de rubriques pour une boîte centrée, où l'on
+  perdait le haut du formulaire dès qu'on faisait défiler. La navigation
+  reste visible sous un voile, et la barre d'enregistrement ne quitte pas
+  l'écran.
+
+  Attend `modal` dans le scope Alpine, et `client` en contexte pour une
+  modification.
 {% endcomment %}
 <div x-show="modal" x-cloak x-transition.opacity @keydown.escape.window="modal = false"
-     class="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4 lg:pl-[var(--nav-offset)]">
-  <div @click.self="modal = false" class="flex max-h-full w-full max-w-3xl justify-center">
-    <div class="hs-popover flex max-h-full w-full flex-col">
-      <div class="flex shrink-0 items-center justify-between px-5 pt-5">
-        <h2 class="text-[16px] font-medium">{% if client %}{% trans "Modifier le client" %}{% else %}{% trans "Nouveau client" %}{% endif %}</h2>
+     class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+     style="margin: 0; background: rgb(0 0 0 / 0.4)"
+     role="dialog" aria-modal="true" aria-labelledby="client-titre">
+  <div class="hs-contraste min-h-screen" style="background: var(--page)">
+
+    <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+         style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+      <div class="flex min-w-0 items-center gap-3">
         <button type="button" @click="modal = false" title="{% trans 'Fermer' %}"
-                class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-muted)">
-          <span class="material-icons-round text-[20px]">close</span>
+                class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+          <span class="material-icons-round text-[22px]">arrow_back</span>
+        </button>
+        <div class="min-w-0">
+          <h2 id="client-titre" class="truncate text-[20px]">
+            {% if client %}{{ client.nom_complet }}{% else %}{% trans "Nouveau client" %}{% endif %}
+          </h2>
+          <p class="hs-panel-sub">
+            {% if client %}{% trans "Modifier la fiche" %}{% else %}{% trans "Coopérative, grossiste, restaurateur ou particulier." %}{% endif %}
+          </p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2">
+        <button type="button" @click="modal = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+        <button type="submit" form="client-form" class="hs-btn-primary">
+          <span class="material-icons-round text-[18px]">save</span>{% trans "Enregistrer" %}
         </button>
       </div>
-      <form method="post" action="{% if client %}{% url 'client:edit' client.pk %}{% else %}{% url 'client:create' %}{% endif %}"
-            class="flex min-h-0 flex-1 flex-col">
-        {% csrf_token %}
-        <div class="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-          {% include "client/_client_fields.html" with c=client p="client" %}
-        </div>
-        <div class="flex shrink-0 justify-end gap-2 px-5 pb-5 pt-1" style="border-top: 0.5px solid var(--border)">
-          <button type="button" @click="modal = false" class="hs-btn-outline mt-4">{% trans "Annuler" %}</button>
-          <button type="submit" class="hs-btn-primary mt-4">{% trans "Enregistrer" %}</button>
-        </div>
-      </form>
     </div>
+
+    <form id="client-form" method="post" class="px-5 py-5 pb-8"
+          action="{% if client %}{% url 'client:edit' client.pk %}{% else %}{% url 'client:create' %}{% endif %}">
+      {% csrf_token %}
+      {% include "client/_client_fields.html" with c=client p="client" %}
+    </form>
   </div>
 </div>
