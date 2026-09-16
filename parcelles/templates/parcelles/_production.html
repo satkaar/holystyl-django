@@ -1,0 +1,526 @@
+{% load i18n l10n %}
+{% comment %}
+  Ce que la parcelle a donné et ce qu'elle a demandé en heures — affiché et
+  saisi au même endroit, sur la fiche comme sur le formulaire.
+
+  La récolte est écrite dans `finances.Recolte`, l'heure de travail dans
+  `interventions.Intervention` : saisir ici crée l'intervention correspondante,
+  qui reste visible dans le journal. Rien n'est recopié dans la parcelle, sinon
+  deux vérités cohabiteraient.
+
+  À inclure HORS de tout <form> : les fenêtres de saisie en portent un, et deux
+  <form> ne s'imbriquent pas. Attend `parcelle`, le contexte de
+  `_contexte_production`, et `origine` (« modifier » ou vide).
+{% endcomment %}
+<div class="hs-contraste space-y-5"
+     x-data="{
+       recolte: false,
+       heures: false,
+       editing: false,
+       action: '',
+       r: { date: '{{ aujourdhui }}', quantite: '', qualite: 'cat1', prix: '', cout: '', notes: '' },
+       h: { date: '{{ aujourdhui }}', type: 'recolte', titre: '', duree: '', membre: '', surface: '', cout: '', notes: '' },
+       suppr: { open: false, action: '', nom: '' },
+       get valorisation() {
+         const v = (parseFloat(this.r.quantite) || 0) * (parseFloat(this.r.prix) || 0);
+         return Math.round(v * 100) / 100;
+       },
+       ouvrirRecolte() {
+         this.editing = false;
+         this.action = '{% url 'parcelles:recolte_create' parcelle.pk %}';
+         this.r = { date: '{{ aujourdhui }}', quantite: '', qualite: 'cat1', prix: '', cout: '', notes: '' };
+         this.recolte = true;
+       },
+       modifierRecolte(d) {
+         this.editing = true;
+         this.action = d.action;
+         this.r = d.valeurs;
+         this.recolte = true;
+       },
+       ouvrirHeures() {
+         this.editing = false;
+         this.action = '{% url 'parcelles:heures_create' parcelle.pk %}';
+         this.h = { date: '{{ aujourdhui }}', type: 'recolte', titre: '', duree: '', membre: '', surface: '{{ parcelle.area|default_if_none:""|unlocalize }}', cout: '', notes: '' };
+         this.heures = true;
+       },
+       modifierHeures(d) {
+         this.editing = true;
+         this.action = d.action;
+         this.h = d.valeurs;
+         this.heures = true;
+       },
+     }">
+
+  {# ── Rendements ── #}
+  <div class="hs-panel">
+    <div class="hs-panel-head justify-between">
+      <div class="flex min-w-0 items-center gap-3">
+        <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">agriculture</span></span>
+        <div class="min-w-0">
+          <p class="hs-panel-title">{% trans "Rendements" %}</p>
+          <p class="hs-panel-sub">{% trans "Ce que la parcelle a donné, campagne par campagne." %}</p>
+        </div>
+      </div>
+      <button type="button" @click="ouvrirRecolte()" class="hs-btn-primary shrink-0">
+        <span class="material-icons-round text-[18px]">add</span>{% trans "Récolte" %}
+      </button>
+    </div>
+
+    <div class="hs-panel-body space-y-4">
+      {% if rendements.campagnes %}
+        <div class="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
+          <div class="hs-tile">
+            <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Rendement" %} {{ rendements.courante.libelle }}</p>
+            <p class="text-[22px]">{% if rendements.courante.rendement %}{{ rendements.courante.rendement|floatformat:"0" }} <span class="text-[13px]" style="color: var(--text-secondary)">kg/ha</span>{% else %}—{% endif %}</p>
+          </div>
+          <div class="hs-tile">
+            <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Récolté" %} {{ rendements.courante.libelle }}</p>
+            <p class="text-[22px]">{{ rendements.courante.kg|floatformat:"0" }} <span class="text-[13px]" style="color: var(--text-secondary)">kg</span></p>
+            {% if rendements.variation is not None %}
+              <p class="text-[12px]" style="color: var(--{% if rendements.variation >= 0 %}success{% else %}danger{% endif %})">
+                {% if rendements.variation >= 0 %}+{% endif %}{{ rendements.variation }} % {% trans "vs campagne précédente" %}
+              </p>
+            {% endif %}
+          </div>
+          <div class="hs-tile">
+            <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Valorisation" %}</p>
+            <p class="text-[22px]">{{ rendements.courante.valorisation|floatformat:"0" }} <span class="text-[13px]" style="color: var(--text-secondary)">€</span></p>
+            {% if rendements.courante.prix_moyen %}<p class="text-[12px]" style="color: var(--text-secondary)">{{ rendements.courante.prix_moyen }} €/kg</p>{% endif %}
+          </div>
+          <div class="hs-tile">
+            <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Fruit du travail" %}</p>
+            <p class="text-[22px]">{% if fruit.kg_par_heure %}{{ fruit.kg_par_heure|floatformat:"-1" }} <span class="text-[13px]" style="color: var(--text-secondary)">kg/h</span>{% else %}—{% endif %}</p>
+            {% if fruit.euros_par_heure %}<p class="text-[12px]" style="color: var(--text-secondary)">{{ fruit.euros_par_heure }} €/h</p>{% endif %}
+          </div>
+        </div>
+
+        {% if graphique_rendement %}
+          <div>
+            <p class="mb-1 text-[12px]" style="color: var(--text-secondary)">{% trans "Par campagne" %}</p>
+            {% include "partials/area_chart.html" with chart_id="parcelleRendementChart" chart_data=graphique_rendement height=180 %}
+          </div>
+        {% endif %}
+
+        <div class="overflow-x-auto">
+          <table class="hs-table">
+            <thead>
+              <tr>
+                <th>{% trans "Campagne" %}</th>
+                <th class="num">{% trans "Récolté" %}</th>
+                <th class="num">{% trans "Rendement" %}</th>
+                <th class="num">{% trans "Valorisation" %}</th>
+                <th>{% trans "Qualités" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for c in rendements.campagnes %}
+                <tr>
+                  <td>{{ c.libelle }}</td>
+                  <td class="num">{{ c.kg|floatformat:"0" }} kg</td>
+                  <td class="num">{% if c.rendement %}{{ c.rendement|floatformat:"0" }} kg/ha{% else %}—{% endif %}</td>
+                  <td class="num">{{ c.valorisation|floatformat:"0" }} €</td>
+                  <td style="color: var(--text-secondary)">{% for q in c.qualites %}{{ q.libelle }} {{ q.part }} %{% if not forloop.last %} · {% endif %}{% endfor %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if not rendements.surface %}
+          <p class="text-[12px]" style="color: var(--text-muted)">{% trans "Renseignez la surface de la parcelle pour obtenir un rendement à l'hectare." %}</p>
+        {% endif %}
+      {% else %}
+        <p class="text-[13px]" style="color: var(--text-secondary)">
+          {% trans "Aucune récolte enregistrée sur cette parcelle. Enregistrez une pesée pour voir le rendement." %}
+        </p>
+      {% endif %}
+
+      {# Les pesées, une à une : c'est là qu'on corrige une erreur de saisie. #}
+      {% if recoltes %}
+        <div>
+          <p class="mb-1.5 text-[12px] font-medium uppercase tracking-wide" style="color: var(--text-secondary)">{% trans "Pesées enregistrées" %}</p>
+          <div class="overflow-x-auto">
+            <table class="hs-table">
+              <thead>
+                <tr>
+                  <th>{% trans "Date" %}</th>
+                  <th class="num">{% trans "Quantité" %}</th>
+                  <th>{% trans "Qualité" %}</th>
+                  <th class="num">{% trans "Prix" %}</th>
+                  <th class="num">{% trans "Valorisation" %}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in recoltes %}
+                  <tr>
+                    <td>{{ r.date|date:"d/m/Y" }}</td>
+                    <td class="num font-medium">{{ r.quantite_kg|floatformat:"-1" }} kg</td>
+                    <td style="color: var(--text-secondary)">{{ r.get_qualite_display }}</td>
+                    <td class="num" style="color: var(--text-secondary)">{% if r.prix_unitaire %}{{ r.prix_unitaire|floatformat:"-2" }} €/kg{% else %}—{% endif %}</td>
+                    <td class="num">{% widthratio r.quantite_kg 1 r.prix_unitaire %} €</td>
+                    <td class="num">
+                      <div class="flex items-center justify-end gap-1.5">
+                        <button type="button" title="{% trans 'Modifier' %}"
+                                @click="modifierRecolte({ action: '{% url 'parcelles:recolte_edit' parcelle.pk r.pk %}', valeurs: { date: '{{ r.date|date:"Y-m-d" }}', quantite: '{{ r.quantite_kg|unlocalize }}', qualite: '{{ r.qualite }}', prix: '{{ r.prix_unitaire|unlocalize }}', cout: '{{ r.cout_main_oeuvre|unlocalize }}', notes: '{{ r.notes|escapejs }}' } })"
+                                class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+                          <span class="material-icons-round text-[18px]">edit</span>
+                        </button>
+                        <button type="button" title="{% trans 'Supprimer' %}"
+                                @click="suppr = { open: true, action: '{% url 'parcelles:recolte_delete' parcelle.pk r.pk %}', nom: '{{ r.quantite_kg|unlocalize }} kg — {{ r.date|date:"d/m/Y" }}' }"
+                                class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--danger)">
+                          <span class="material-icons-round text-[18px]">delete_outline</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Heures effectuées ── #}
+  <div class="hs-panel">
+    <div class="hs-panel-head justify-between">
+      <div class="flex min-w-0 items-center gap-3">
+        <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">schedule</span></span>
+        <div class="min-w-0">
+          <p class="hs-panel-title">{% trans "Heures effectuées" %}</p>
+          <p class="hs-panel-sub">{% trans "Le temps passé sur la parcelle, par travail et par personne." %}</p>
+        </div>
+      </div>
+      <button type="button" @click="ouvrirHeures()" class="hs-btn-primary shrink-0">
+        <span class="material-icons-round text-[18px]">add</span>{% trans "Heures" %}
+      </button>
+    </div>
+
+    <div class="hs-panel-body space-y-4">
+      {% if heures.total or engins.total %}
+        <div class="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
+          <div class="hs-tile">
+            <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Heures de travail" %}</p>
+            <p class="text-[22px]">{{ heures.total|floatformat:"-1" }} <span class="text-[13px]" style="color: var(--text-secondary)">h</span></p>
+            <p class="text-[12px]" style="color: var(--text-secondary)">{{ heures.nombre }} {% trans "intervention(s)" %}</p>
+          </div>
+          <div class="hs-tile">
+            <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Par hectare" %}</p>
+            <p class="text-[22px]">{% if heures.par_hectare %}{{ heures.par_hectare|floatformat:"-1" }} <span class="text-[13px]" style="color: var(--text-secondary)">h/ha</span>{% else %}—{% endif %}</p>
+          </div>
+          <div class="hs-tile">
+            <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Heures d'engins" %}</p>
+            <p class="text-[22px]">{{ engins.total|floatformat:"-1" }} <span class="text-[13px]" style="color: var(--text-secondary)">h</span></p>
+          </div>
+          <div class="hs-tile">
+            <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Coût de main-d'œuvre" %}</p>
+            <p class="text-[22px]">{{ heures.cout|floatformat:"0" }} <span class="text-[13px]" style="color: var(--text-secondary)">€</span></p>
+            {% if fruit.cout_par_kg %}<p class="text-[12px]" style="color: var(--text-secondary)">{{ fruit.cout_par_kg }} €/kg</p>{% endif %}
+          </div>
+        </div>
+
+        <div class="grid gap-4 md:grid-cols-2">
+          {% if graphique_heures %}
+            <div>
+              <p class="mb-1 text-[12px]" style="color: var(--text-secondary)">{% trans "Par type de travail" %}</p>
+              {% include "partials/area_chart.html" with chart_id="parcelleHeuresChart" chart_data=graphique_heures height=180 %}
+            </div>
+          {% endif %}
+          {% if heures.par_personne %}
+            <div class="overflow-x-auto">
+              <p class="mb-1 text-[12px]" style="color: var(--text-secondary)">{% trans "Par personne" %}</p>
+              <table class="hs-table">
+                <thead><tr><th>{% trans "Personne" %}</th><th class="num">{% trans "Heures" %}</th><th class="num">{% trans "Interventions" %}</th></tr></thead>
+                <tbody>
+                  {% for p in heures.par_personne %}
+                    <tr><td>{{ p.libelle }}</td><td class="num">{{ p.heures|floatformat:"-1" }} h</td><td class="num">{{ p.nombre }}</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        </div>
+
+        {% if engins.par_engin %}
+          <p class="text-[12px]" style="color: var(--text-secondary)">
+            {% trans "Engins :" %} {% for e in engins.par_engin %}{{ e.libelle }} {{ e.heures|floatformat:"-1" }} h{% if not forloop.last %} · {% endif %}{% endfor %}
+          </p>
+        {% endif %}
+        {% if heures.sans_duree %}
+          <p class="text-[12px]" style="color: var(--warning)">
+            {{ heures.sans_duree }} {% trans "intervention(s) sans durée saisie : elles ne comptent pas dans le total." %}
+          </p>
+        {% endif %}
+      {% else %}
+        <p class="text-[13px]" style="color: var(--text-secondary)">
+          {% trans "Aucune heure enregistrée sur cette parcelle. Saisissez-en ici, ou laissez le journal des interventions les apporter." %}
+        </p>
+      {% endif %}
+
+      {# Les interventions de la parcelle : c'est là qu'on corrige une durée. #}
+      {% if interventions_parcelle %}
+        <div>
+          <p class="mb-1.5 text-[12px] font-medium uppercase tracking-wide" style="color: var(--text-secondary)">{% trans "Interventions sur la parcelle" %}</p>
+          <div class="overflow-x-auto">
+            <table class="hs-table">
+              <thead>
+                <tr>
+                  <th>{% trans "Date" %}</th>
+                  <th>{% trans "Travail" %}</th>
+                  <th>{% trans "Personne" %}</th>
+                  <th class="num">{% trans "Durée" %}</th>
+                  <th class="num">{% trans "Coût" %}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for i in interventions_parcelle %}
+                  <tr>
+                    <td>{{ i.start_time|date:"d/m/Y" }}</td>
+                    <td>
+                      <span class="font-medium">{{ i.title|default:i.get_intervention_type_display }}</span>
+                      {% if i.status == "annulee" %}<span class="hs-badge hs-badge-neutral ml-1">{% trans "Annulée" %}</span>{% endif %}
+                    </td>
+                    <td style="color: var(--text-secondary)">{{ i.assigned_to.name|default:"—" }}</td>
+                    <td class="num {% if i.duration_hours %}font-medium{% endif %}">
+                      {% if i.duration_hours %}{{ i.duration_hours|floatformat:"-1" }} h{% else %}<span style="color: var(--warning)">{% trans "à compléter" %}</span>{% endif %}
+                    </td>
+                    <td class="num" style="color: var(--text-secondary)">{% if i.cost %}{{ i.cost|floatformat:"0" }} €{% else %}—{% endif %}</td>
+                    <td class="num">
+                      <div class="flex items-center justify-end gap-1.5">
+                        <button type="button" title="{% trans 'Modifier' %}"
+                                @click="modifierHeures({ action: '{% url 'parcelles:heures_edit' parcelle.pk i.pk %}', valeurs: { date: '{{ i.start_time|date:"Y-m-d" }}', type: '{{ i.intervention_type }}', titre: '{{ i.title|escapejs }}', duree: '{{ i.duration_hours|default_if_none:""|unlocalize }}', membre: '{{ i.assigned_to_id|default_if_none:"" }}', surface: '{{ i.surface|default_if_none:""|unlocalize }}', cout: '{{ i.cost|default_if_none:""|unlocalize }}', notes: '{{ i.notes|escapejs }}' } })"
+                                class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+                          <span class="material-icons-round text-[18px]">edit</span>
+                        </button>
+                        <button type="button" title="{% trans 'Supprimer' %}"
+                                @click="suppr = { open: true, action: '{% url 'parcelles:heures_delete' parcelle.pk i.pk %}', nom: '{{ i.title|default:i.get_intervention_type_display|escapejs }} — {{ i.start_time|date:"d/m/Y" }}' }"
+                                class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--danger)">
+                          <span class="material-icons-round text-[18px]">delete_outline</span>
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          <p class="mt-1.5 text-[12px]" style="color: var(--text-muted)">
+            {% trans "Ces lignes sont les interventions du journal : ce qui est saisi ici y apparaît aussi." %}
+          </p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Saisie d'une récolte, en plein écran ── #}
+  <div x-show="recolte" x-cloak x-transition.opacity @keydown.escape.window="recolte = false"
+       class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)"
+       role="dialog" aria-modal="true" aria-labelledby="recolte-titre">
+    <div class="min-h-screen" style="background: var(--page)">
+      <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+           style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+        <div class="flex min-w-0 items-center gap-3">
+          <button type="button" @click="recolte = false" title="{% trans 'Fermer' %}"
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+            <span class="material-icons-round text-[22px]">arrow_back</span>
+          </button>
+          <div class="min-w-0">
+            <h2 id="recolte-titre" class="truncate text-[20px]"
+                x-text="editing ? '{% trans "Modifier la récolte" %}' : '{% trans "Nouvelle récolte" %}'">{% trans "Nouvelle récolte" %}</h2>
+            <p class="hs-panel-sub">{{ parcelle.name }}{% if parcelle.area %} · {{ parcelle.area }} ha{% endif %}</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" @click="recolte = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+          <button type="submit" form="recolte-form" class="hs-btn-primary">
+            <span class="material-icons-round text-[18px]">save</span>{% trans "Enregistrer" %}
+          </button>
+        </div>
+      </div>
+
+      <form id="recolte-form" method="post" :action="action" class="px-5 py-5 pb-8">
+        {% csrf_token %}
+        <input type="hidden" name="origine" value="{{ origine|default:'' }}">
+        <div class="grid items-start gap-5 xl:grid-cols-2">
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">scale</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "La pesée" %}</p>
+                <p class="hs-panel-sub">{% trans "La campagne se déduit de la date." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+              <div>
+                <label for="r-date" class="mb-1.5 block text-sm font-medium">{% trans "Date de récolte" %}</label>
+                <input id="r-date" name="date" type="date" x-model="r.date">
+              </div>
+              <div>
+                <label for="r-quantite" class="mb-1.5 block text-sm font-medium">{% trans "Quantité (kg)" %} <span style="color: var(--danger)">*</span></label>
+                <input id="r-quantite" name="quantite_kg" type="number" step="0.1" min="0" required inputmode="decimal" x-model="r.quantite">
+              </div>
+              <div class="sm:col-span-2">
+                <label for="r-qualite" class="mb-1.5 block text-sm font-medium">{% trans "Qualité" %}</label>
+                <select id="r-qualite" name="qualite" x-model="r.qualite">
+                  {% for value, label in qualites %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="sm:col-span-2">
+                <label for="r-notes" class="mb-1.5 block text-sm font-medium">{% trans "Notes" %}</label>
+                <textarea id="r-notes" name="notes" rows="3" x-model="r.notes"
+                          placeholder="{% trans 'Destination, lot, conditions de récolte…' %}"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">euro</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "Ce qu'elle vaut" %}</p>
+                <p class="hs-panel-sub">{% trans "Prix de vente et main-d'œuvre de récolte." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body space-y-4">
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label for="r-prix" class="mb-1.5 block text-sm font-medium">{% trans "Prix unitaire (€/kg)" %}</label>
+                  <input id="r-prix" name="prix_unitaire" type="number" step="0.01" min="0" inputmode="decimal" x-model="r.prix">
+                </div>
+                <div>
+                  <label for="r-cout" class="mb-1.5 block text-sm font-medium">{% trans "Coût de récolte (€)" %}</label>
+                  <input id="r-cout" name="cout_main_oeuvre" type="number" step="0.01" min="0" inputmode="decimal" x-model="r.cout">
+                </div>
+              </div>
+              <div class="flex items-baseline justify-between rounded-[10px] px-4 py-3"
+                   style="border: 1px solid var(--border-strong); background: var(--surface-alt)">
+                <span class="text-[13px]" style="color: var(--text-secondary)">{% trans "Valorisation" %}</span>
+                <span class="text-[22px] font-medium tabular-nums" style="color: var(--action-text)">
+                  <span x-text="valorisation"></span> <span class="text-[13px]">€</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ── Saisie d'heures, en plein écran ── #}
+  <div x-show="heures" x-cloak x-transition.opacity @keydown.escape.window="heures = false"
+       class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)"
+       role="dialog" aria-modal="true" aria-labelledby="heures-titre">
+    <div class="min-h-screen" style="background: var(--page)">
+      <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+           style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+        <div class="flex min-w-0 items-center gap-3">
+          <button type="button" @click="heures = false" title="{% trans 'Fermer' %}"
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+            <span class="material-icons-round text-[22px]">arrow_back</span>
+          </button>
+          <div class="min-w-0">
+            <h2 id="heures-titre" class="truncate text-[20px]"
+                x-text="editing ? '{% trans "Modifier les heures" %}' : '{% trans "Saisir des heures" %}'">{% trans "Saisir des heures" %}</h2>
+            <p class="hs-panel-sub">{% trans "Enregistrées comme une intervention sur la parcelle." %}</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" @click="heures = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+          <button type="submit" form="heures-form" class="hs-btn-primary">
+            <span class="material-icons-round text-[18px]">save</span>{% trans "Enregistrer" %}
+          </button>
+        </div>
+      </div>
+
+      <form id="heures-form" method="post" :action="action" class="px-5 py-5 pb-8">
+        {% csrf_token %}
+        <input type="hidden" name="origine" value="{{ origine|default:'' }}">
+        <div class="grid items-start gap-5 xl:grid-cols-2">
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">handyman</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "Le travail" %}</p>
+                <p class="hs-panel-sub">{% trans "Ce qui a été fait sur la parcelle, et quand." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+              <div>
+                <label for="h-date" class="mb-1.5 block text-sm font-medium">{% trans "Date" %}</label>
+                <input id="h-date" name="date" type="date" x-model="h.date">
+              </div>
+              <div>
+                <label for="h-type" class="mb-1.5 block text-sm font-medium">{% trans "Type de travail" %}</label>
+                <select id="h-type" name="intervention_type" x-model="h.type">
+                  {% for value, label in types_intervention %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="sm:col-span-2">
+                <label for="h-titre" class="mb-1.5 block text-sm font-medium">{% trans "Intitulé" %}</label>
+                <input id="h-titre" name="title" maxlength="255" x-model="h.titre"
+                       placeholder="{% trans 'ex : récolte des pommes, rang 1 à 12' %}">
+              </div>
+              <div class="sm:col-span-2">
+                <label for="h-notes" class="mb-1.5 block text-sm font-medium">{% trans "Notes" %}</label>
+                <textarea id="h-notes" name="notes" rows="3" x-model="h.notes"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">timer</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "Le temps passé" %}</p>
+                <p class="hs-panel-sub">{% trans "Sans durée, les heures ne comptent pas." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+              <div>
+                <label for="h-duree" class="mb-1.5 block text-sm font-medium">{% trans "Durée (heures)" %} <span style="color: var(--danger)">*</span></label>
+                <input id="h-duree" name="duration_hours" type="number" step="0.25" min="0" required inputmode="decimal" x-model="h.duree">
+              </div>
+              <div>
+                <label for="h-membre" class="mb-1.5 block text-sm font-medium">{% trans "Personne" %}</label>
+                <select id="h-membre" name="assigned_to" x-model="h.membre">
+                  <option value="">{% trans "Non précisée" %}</option>
+                  {% for m in membres %}<option value="{{ m.pk }}">{{ m.name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div>
+                <label for="h-surface" class="mb-1.5 block text-sm font-medium">{% trans "Surface travaillée (ha)" %}</label>
+                <input id="h-surface" name="surface" type="number" step="0.01" min="0" inputmode="decimal" x-model="h.surface">
+              </div>
+              <div>
+                <label for="h-cout" class="mb-1.5 block text-sm font-medium">{% trans "Coût (€)" %}</label>
+                <input id="h-cout" name="cost" type="number" step="0.01" min="0" inputmode="decimal" x-model="h.cout">
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ── Confirmation de suppression ── #}
+  <div x-show="suppr.open" x-cloak x-transition.opacity @keydown.escape.window="suppr.open = false"
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)">
+    <div @click.self="suppr.open = false" class="hs-popover w-full max-w-sm p-5">
+      <h3 class="text-[15px] font-medium">{% trans "Supprimer cette ligne ?" %}</h3>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        <span class="font-medium" style="color: var(--text)" x-text="suppr.nom"></span> — {% trans "cette action est irréversible." %}
+      </p>
+      <form method="post" :action="suppr.action" class="mt-5 flex justify-end gap-2">
+        {% csrf_token %}
+        <input type="hidden" name="origine" value="{{ origine|default:'' }}">
+        <button type="button" @click="suppr.open = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+        <button type="submit" class="hs-btn-primary" style="background: var(--danger)">{% trans "Supprimer" %}</button>
+      </form>
+    </div>
+  </div>
+</div>

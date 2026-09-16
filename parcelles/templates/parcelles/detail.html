@@ -235,6 +235,9 @@
     {% endif %}
   </div>
 
+  {# ── Ce que la parcelle donne, et ce qu'elle demande ── #}
+  {% include "parcelles/_production.html" %}
+
   <a href="{% url 'parcelles:list' %}" class="inline-flex items-center gap-1 text-[13px]" style="color: var(--action)">← {% trans "Retour aux parcelles" %}</a>
 </section>
 {% endblock %}
