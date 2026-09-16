@@ -628,3 +628,133 @@ def test_fiche_parcelle_sans_donnees(client, user_exploitation):
     assert resp.context["rendements"]["campagnes"] == []
     assert resp.context["heures"]["total"] == 0
     assert "Aucune récolte enregistrée" in resp.content.decode()
+
+
+# ── Saisie des récoltes et des heures depuis la parcelle ──
+
+@pytest.mark.django_db
+def test_enregistrer_une_recolte_depuis_la_parcelle(client, user_exploitation):
+    """La pesée s'écrit dans les récoltes, et le rendement suit aussitôt."""
+    from finances.models import Recolte
+
+    from parcelles.analyse import synthese
+
+    user, exploitation = user_exploitation
+    parcelle = Parcelle.objects.create(exploitation=exploitation, name="Coteau", area=2.0)
+    client.force_login(user)
+
+    reponse = client.post(f"/parcelles/{parcelle.pk}/recolte/", {
+        "date": "2026-06-20", "quantite_kg": "3000", "qualite": "extra",
+        "prix_unitaire": "1,5", "notes": "Première passe"})
+
+    assert reponse.status_code == 302 and reponse["Location"] == f"/parcelles/{parcelle.pk}/"
+    recolte = Recolte.objects.get()
+    assert recolte.quantite_kg == 3000 and recolte.qualite == "extra" and recolte.prix_unitaire == 1.5
+    courante = synthese(parcelle)["rendements"]["courante"]
+    assert courante["kg"] == 3000 and courante["rendement"] == 1500  # 3 000 kg sur 2 ha
+
+
+@pytest.mark.django_db
+def test_une_recolte_sans_quantite_est_refusee(client, user_exploitation):
+    from finances.models import Recolte
+
+    user, exploitation = user_exploitation
+    parcelle = Parcelle.objects.create(exploitation=exploitation, name="Coteau", area=2.0)
+    client.force_login(user)
+
+    client.post(f"/parcelles/{parcelle.pk}/recolte/", {"date": "2026-06-20", "quantite_kg": ""})
+
+    assert not Recolte.objects.exists()
+
+
+@pytest.mark.django_db
+def test_corriger_puis_supprimer_une_recolte(client, user_exploitation):
+    from finances.models import Recolte
+
+    user, exploitation = user_exploitation
+    parcelle = Parcelle.objects.create(exploitation=exploitation, name="Coteau", area=2.0)
+    client.force_login(user)
+    client.post(f"/parcelles/{parcelle.pk}/recolte/", {"date": "2026-06-20", "quantite_kg": "3000"})
+    recolte = Recolte.objects.get()
+
+    # Depuis le formulaire de modification : on y revient plutôt que sur la fiche.
+    reponse = client.post(f"/parcelles/{parcelle.pk}/recolte/{recolte.pk}/", {
+        "date": "2026-06-21", "quantite_kg": "2800", "qualite": "cat1", "origine": "modifier"})
+    recolte.refresh_from_db()
+    assert recolte.quantite_kg == 2800
+    assert reponse["Location"] == f"/parcelles/{parcelle.pk}/modifier/"
+
+    client.post(f"/parcelles/{parcelle.pk}/recolte/{recolte.pk}/supprimer/")
+    assert not Recolte.objects.exists()
+
+
+@pytest.mark.django_db
+def test_saisir_des_heures_cree_une_intervention(client, user_exploitation):
+    """Les heures n'ont pas de table à elles : elles entrent au journal."""
+    from equipe.models import TeamMember
+    from interventions.models import Intervention
+
+    from parcelles.analyse import synthese
+
+    user, exploitation = user_exploitation
+    parcelle = Parcelle.objects.create(exploitation=exploitation, name="Coteau", area=2.0)
+    marie = TeamMember.objects.create(exploitation=exploitation, name="Marie")
+    client.force_login(user)
+
+    client.post(f"/parcelles/{parcelle.pk}/heures/", {
+        "date": "2026-03-02", "intervention_type": "taille", "title": "Taille des rangs 1 à 12",
+        "duration_hours": "6", "assigned_to": str(marie.pk), "cost": "120", "surface": "2"})
+
+    intervention = Intervention.objects.get()
+    assert intervention.parcelle == parcelle and intervention.duration_hours == 6
+    assert intervention.status == "terminee" and intervention.assigned_to == marie
+
+    heures = synthese(parcelle)["heures"]
+    assert heures["total"] == 6 and heures["par_hectare"] == 3.0 and heures["cout"] == 120
+
+
+@pytest.mark.django_db
+def test_des_heures_sans_duree_sont_refusees(client, user_exploitation):
+    from interventions.models import Intervention
+
+    user, exploitation = user_exploitation
+    parcelle = Parcelle.objects.create(exploitation=exploitation, name="Coteau", area=2.0)
+    client.force_login(user)
+
+    client.post(f"/parcelles/{parcelle.pk}/heures/", {
+        "date": "2026-03-02", "intervention_type": "taille", "duration_hours": "0"})
+
+    assert not Intervention.objects.exists()
+
+
+@pytest.mark.django_db
+def test_la_recolte_du_voisin_ne_se_touche_pas(client, user_exploitation, django_user_model):
+    from finances.models import Recolte
+
+    user, _exploitation = user_exploitation
+    voisin = django_user_model.objects.create_user(email="voisin-recolte@ex.com", password="pwd12345")
+    ailleurs = Exploitation.objects.create(owner=voisin, name="Ferme d'en face")
+    sa_parcelle = Parcelle.objects.create(exploitation=ailleurs, name="Sa parcelle", area=3)
+    from django.utils import timezone
+
+    sa_recolte = Recolte.objects.create(exploitation=ailleurs, parcelle=sa_parcelle,
+                                        date=timezone.now(), quantite_kg=500)
+
+    client.force_login(user)
+    reponse = client.post(f"/parcelles/{sa_parcelle.pk}/recolte/{sa_recolte.pk}/supprimer/")
+
+    assert reponse.status_code == 404
+    assert Recolte.objects.filter(pk=sa_recolte.pk).exists()
+
+
+@pytest.mark.django_db
+def test_la_fiche_et_le_formulaire_montrent_la_saisie(client, parcelle_travaillee):
+    """Les deux pages portent les mêmes chiffres et les mêmes boutons."""
+    user, parcelle = parcelle_travaillee
+    client.force_login(user)
+
+    for url in (f"/parcelles/{parcelle.pk}/", f"/parcelles/{parcelle.pk}/modifier/"):
+        page = client.get(url).content.decode()
+        assert 'id="recolte-form"' in page and 'id="heures-form"' in page
+        assert "Rendements" in page and "Heures effectuées" in page
+        assert "1500" in page or "1 500" in page  # le rendement de la campagne

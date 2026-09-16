@@ -127,139 +127,6 @@
     </div>
   </div>
 
-  {# ── Rendements : ce que la parcelle a donné ── #}
-  {% if parcelle %}
-  <div class="hs-card p-5 space-y-4">
-    <h2 class="flex items-center gap-2 text-[15px] font-medium"><span class="material-icons-round text-[18px]" style="color: var(--text-muted)">agriculture</span>{% trans "Rendements" %}</h2>
-
-    {% if rendements.campagnes %}
-      <div class="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
-        <div class="hs-tile">
-          <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Rendement" %} {{ rendements.courante.libelle }}</p>
-          <p class="text-[22px]">{% if rendements.courante.rendement %}{{ rendements.courante.rendement|floatformat:"0" }} <span class="text-[13px]" style="color: var(--text-secondary)">kg/ha</span>{% else %}—{% endif %}</p>
-        </div>
-        <div class="hs-tile">
-          <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Récolté" %} {{ rendements.courante.libelle }}</p>
-          <p class="text-[22px]">{{ rendements.courante.kg|floatformat:"0" }} <span class="text-[13px]" style="color: var(--text-secondary)">kg</span></p>
-          {% if rendements.variation is not None %}
-            <p class="text-[12px]" style="color: var(--{% if rendements.variation >= 0 %}success{% else %}danger{% endif %})">
-              {% if rendements.variation >= 0 %}+{% endif %}{{ rendements.variation }} % {% trans "vs campagne précédente" %}
-            </p>
-          {% endif %}
-        </div>
-        <div class="hs-tile">
-          <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Valorisation" %}</p>
-          <p class="text-[22px]">{{ rendements.courante.valorisation|floatformat:"0" }} <span class="text-[13px]" style="color: var(--text-secondary)">€</span></p>
-          {% if rendements.courante.prix_moyen %}<p class="text-[12px]" style="color: var(--text-secondary)">{{ rendements.courante.prix_moyen }} €/kg</p>{% endif %}
-        </div>
-        <div class="hs-tile">
-          <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Fruit du travail" %}</p>
-          <p class="text-[22px]">{% if fruit.kg_par_heure %}{{ fruit.kg_par_heure|floatformat:"-1" }} <span class="text-[13px]" style="color: var(--text-secondary)">kg/h</span>{% else %}—{% endif %}</p>
-          {% if fruit.euros_par_heure %}<p class="text-[12px]" style="color: var(--text-secondary)">{{ fruit.euros_par_heure }} €/h</p>{% endif %}
-        </div>
-      </div>
-
-      {% if graphique_rendement %}
-        <div>
-          <p class="text-[12px] mb-1" style="color: var(--text-secondary)">{% trans "Par campagne" %}</p>
-          {% include "partials/area_chart.html" with chart_id="parcelleRendementChart" chart_data=graphique_rendement height=180 %}
-        </div>
-      {% endif %}
-
-      <div class="overflow-x-auto">
-        <table class="hs-table">
-          <thead>
-            <tr>
-              <th>{% trans "Campagne" %}</th>
-              <th class="num">{% trans "Récolté" %}</th>
-              <th class="num">{% trans "Rendement" %}</th>
-              <th class="num">{% trans "Valorisation" %}</th>
-              <th>{% trans "Qualités" %}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for c in rendements.campagnes %}
-              <tr>
-                <td>{{ c.libelle }}</td>
-                <td class="num">{{ c.kg|floatformat:"0" }} kg</td>
-                <td class="num">{% if c.rendement %}{{ c.rendement|floatformat:"0" }} kg/ha{% else %}—{% endif %}</td>
-                <td class="num">{{ c.valorisation|floatformat:"0" }} €</td>
-                <td style="color: var(--text-secondary)">{% for q in c.qualites %}{{ q.libelle }} {{ q.part }} %{% if not forloop.last %} · {% endif %}{% endfor %}</td>
-              </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% if not rendements.surface %}
-        <p class="text-[12px]" style="color: var(--text-muted)">{% trans "Renseignez la surface ci-dessus pour obtenir un rendement à l'hectare." %}</p>
-      {% endif %}
-    {% else %}
-      <p class="text-[13px]" style="color: var(--text-secondary)">{% trans "Aucune récolte enregistrée sur cette parcelle. Elles apparaîtront ici dès la première pesée." %}</p>
-    {% endif %}
-  </div>
-
-  {# ── Heures effectuées : le temps passé sur la parcelle ── #}
-  <div class="hs-card p-5 space-y-4">
-    <h2 class="flex items-center gap-2 text-[15px] font-medium"><span class="material-icons-round text-[18px]" style="color: var(--text-muted)">schedule</span>{% trans "Heures effectuées" %}</h2>
-
-    {% if heures.total or engins.total %}
-      <div class="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
-        <div class="hs-tile">
-          <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Heures de travail" %}</p>
-          <p class="text-[22px]">{{ heures.total|floatformat:"-1" }} <span class="text-[13px]" style="color: var(--text-secondary)">h</span></p>
-          <p class="text-[12px]" style="color: var(--text-secondary)">{{ heures.nombre }} {% trans "intervention(s)" %}</p>
-        </div>
-        <div class="hs-tile">
-          <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Par hectare" %}</p>
-          <p class="text-[22px]">{% if heures.par_hectare %}{{ heures.par_hectare|floatformat:"-1" }} <span class="text-[13px]" style="color: var(--text-secondary)">h/ha</span>{% else %}—{% endif %}</p>
-        </div>
-        <div class="hs-tile">
-          <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Heures d'engins" %}</p>
-          <p class="text-[22px]">{{ engins.total|floatformat:"-1" }} <span class="text-[13px]" style="color: var(--text-secondary)">h</span></p>
-        </div>
-        <div class="hs-tile">
-          <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Coût de main-d'œuvre" %}</p>
-          <p class="text-[22px]">{{ heures.cout|floatformat:"0" }} <span class="text-[13px]" style="color: var(--text-secondary)">€</span></p>
-          {% if fruit.cout_par_kg %}<p class="text-[12px]" style="color: var(--text-secondary)">{{ fruit.cout_par_kg }} €/kg</p>{% endif %}
-        </div>
-      </div>
-
-      <div class="grid gap-4 md:grid-cols-2">
-        {% if graphique_heures %}
-          <div>
-            <p class="text-[12px] mb-1" style="color: var(--text-secondary)">{% trans "Par type de travail" %}</p>
-            {% include "partials/area_chart.html" with chart_id="parcelleHeuresChart" chart_data=graphique_heures height=180 %}
-          </div>
-        {% endif %}
-        {% if heures.par_personne %}
-          <div class="overflow-x-auto">
-            <p class="text-[12px] mb-1" style="color: var(--text-secondary)">{% trans "Par personne" %}</p>
-            <table class="hs-table">
-              <thead><tr><th>{% trans "Personne" %}</th><th class="num">{% trans "Heures" %}</th><th class="num">{% trans "Interventions" %}</th></tr></thead>
-              <tbody>
-                {% for p in heures.par_personne %}
-                  <tr><td>{{ p.libelle }}</td><td class="num">{{ p.heures|floatformat:"-1" }} h</td><td class="num">{{ p.nombre }}</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% endif %}
-      </div>
-
-      {% if engins.par_engin %}
-        <p class="text-[12px]" style="color: var(--text-secondary)">
-          {% trans "Engins :" %} {% for e in engins.par_engin %}{{ e.libelle }} {{ e.heures|floatformat:"-1" }} h{% if not forloop.last %} · {% endif %}{% endfor %}
-        </p>
-      {% endif %}
-      {% if heures.sans_duree %}
-        <p class="text-[12px]" style="color: var(--text-muted)">{{ heures.sans_duree }} {% trans "intervention(s) sans durée saisie, non comptées." %}</p>
-      {% endif %}
-    {% else %}
-      <p class="text-[13px]" style="color: var(--text-secondary)">{% trans "Aucune heure enregistrée sur cette parcelle. Les interventions terrain l'alimentent au fil des chantiers." %}</p>
-    {% endif %}
-  </div>
-  {% endif %}
-
   {# ── Barre d'actions ── #}
   <div class="flex items-center justify-end gap-2 pt-1">
     {% if parcelle %}
@@ -270,6 +137,14 @@
     <button type="submit" class="hs-btn-primary">{% trans "Enregistrer" %}</button>
   </div>
 </form>
+
+{% comment %}Hors du formulaire : la saisie d'une récolte ou d'heures porte le
+sien, et deux <form> ne s'imbriquent pas.{% endcomment %}
+{% if parcelle %}
+  <div class="mt-5">
+    {% include "parcelles/_production.html" with origine="modifier" %}
+  </div>
+{% endif %}
 {% endblock %}
 
 {% block extra_js %}

@@ -1,5 +1,6 @@
 """Vues web parcelles : carte + liste, création, détail, édition, suppression, cadastre IGN."""
 
+import datetime
 import json
 import urllib.parse
 import urllib.request
@@ -11,10 +12,12 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.utils.translation import gettext as _
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_POST
 
+from equipe.models import TeamMember
 from exploitations.models import Exploitation
 from irrigation import satellite, teledetection
 
@@ -264,11 +267,145 @@ def parcelle_detail(request, pk):
             "campagne": campagne,
             "crop_stages": campagne.crop_stages.all() if campagne else [],
             "analyses_sol": parcelle.analyses_sol.all(),
+            **_contexte_production(parcelle, exploitation),
             "geojson": geojson,
             "map_center": center,
             "page_title": parcelle.name,
         },
     )
+
+
+# ── Ce que la parcelle donne, et ce qu'elle demande en heures ────────
+#
+# La récolte vit dans `finances.Recolte` et l'heure de travail dans
+# `interventions.Intervention` : on écrit donc là-bas, depuis ici. Rien n'est
+# recopié dans les parcelles, sans quoi deux vérités cohabiteraient.
+
+
+def _to_float(valeur, defaut=None):
+    try:
+        return float(str(valeur).replace(",", ".").replace("€", "").replace(" ", "").strip())
+    except (TypeError, ValueError):
+        return defaut
+
+
+def _contexte_production(parcelle, exploitation):
+    """Rendements, heures et de quoi les saisir — pour la fiche comme pour le formulaire."""
+    from finances.models import Recolte
+    from interventions.models import Intervention
+
+    return {
+        **analyse.synthese(parcelle),
+        "recoltes": Recolte.objects.filter(parcelle=parcelle, exploitation=exploitation)[:20],
+        "interventions_parcelle": (Intervention.objects.filter(parcelle=parcelle, exploitation=exploitation)
+                                   .select_related("assigned_to").order_by("-start_time")[:20]),
+        "qualites": Recolte.Qualite.choices,
+        "types_intervention": Intervention.Type.choices,
+        "membres": TeamMember.objects.filter(exploitation=exploitation),
+        "aujourdhui": timezone.localdate().isoformat(),
+    }
+
+
+def _retour_parcelle(request, parcelle):
+    """Revenir d'où l'on vient : la fiche ou le formulaire, jamais ailleurs."""
+    origine = request.POST.get("origine")
+    if origine == "modifier":
+        return redirect("parcelles:edit", pk=parcelle.pk)
+    return redirect("parcelles:detail", pk=parcelle.pk)
+
+
+@login_required
+@require_POST
+def recolte_save(request, parcelle_pk, pk=None):
+    """Enregistre une pesée sur la parcelle (création ou correction)."""
+    from finances.models import Recolte
+
+    exploitation = _exploitation_or_redirect(request)
+    parcelle = get_object_or_404(Parcelle, pk=parcelle_pk, exploitation=exploitation)
+    recolte = (get_object_or_404(Recolte, pk=pk, parcelle=parcelle, exploitation=exploitation)
+               if pk else Recolte(exploitation=exploitation, parcelle=parcelle))
+
+    quantite = _to_float(request.POST.get("quantite_kg"))
+    if quantite is None or quantite < 0:
+        messages.error(request, _("Indiquez la quantité récoltée, en kilos."))
+        return _retour_parcelle(request, parcelle)
+
+    date = parse_date(request.POST.get("date") or "") or timezone.localdate()
+    qualite = request.POST.get("qualite")
+    recolte.date = timezone.make_aware(datetime.datetime.combine(date, datetime.time(12, 0)))
+    recolte.quantite_kg = quantite
+    recolte.qualite = qualite if qualite in Recolte.Qualite.values else Recolte.Qualite.CAT1
+    recolte.prix_unitaire = _to_float(request.POST.get("prix_unitaire"), 0) or 0
+    recolte.cout_main_oeuvre = _to_float(request.POST.get("cout_main_oeuvre"), 0) or 0
+    recolte.notes = (request.POST.get("notes") or "").strip()
+    recolte.save()
+    messages.success(request, _("Récolte enregistrée."))
+    return _retour_parcelle(request, parcelle)
+
+
+@login_required
+@require_POST
+def recolte_delete(request, parcelle_pk, pk):
+    from finances.models import Recolte
+
+    exploitation = _exploitation_or_redirect(request)
+    parcelle = get_object_or_404(Parcelle, pk=parcelle_pk, exploitation=exploitation)
+    get_object_or_404(Recolte, pk=pk, parcelle=parcelle, exploitation=exploitation).delete()
+    messages.success(request, _("Récolte supprimée."))
+    return _retour_parcelle(request, parcelle)
+
+
+@login_required
+@require_POST
+def heures_save(request, parcelle_pk, pk=None):
+    """Saisit des heures : c'est une intervention, avec sa durée et son coût.
+
+    Les heures n'ont pas de table à elles — elles sont portées par le journal
+    des interventions, qui les compte déjà. Saisir ici crée donc l'intervention
+    correspondante, visible ensuite dans le journal.
+    """
+    from interventions.models import Intervention
+
+    exploitation = _exploitation_or_redirect(request)
+    parcelle = get_object_or_404(Parcelle, pk=parcelle_pk, exploitation=exploitation)
+    intervention = (get_object_or_404(Intervention, pk=pk, parcelle=parcelle, exploitation=exploitation)
+                    if pk else Intervention(exploitation=exploitation, parcelle=parcelle,
+                                            user=request.user, status=Intervention.Status.TERMINEE))
+
+    duree = _to_float(request.POST.get("duration_hours"))
+    if duree is None or duree <= 0:
+        messages.error(request, _("Indiquez une durée, en heures."))
+        return _retour_parcelle(request, parcelle)
+
+    date = parse_date(request.POST.get("date") or "") or timezone.localdate()
+    type_travail = request.POST.get("intervention_type")
+    membre = TeamMember.objects.filter(pk=request.POST.get("assigned_to") or 0,
+                                       exploitation=exploitation).first()
+    intervention.start_time = timezone.make_aware(datetime.datetime.combine(date, datetime.time(8, 0)))
+    intervention.intervention_type = (type_travail if type_travail in Intervention.Type.values
+                                      else Intervention.Type.AUTRE)
+    intervention.title = (request.POST.get("title") or "").strip()[:255]
+    intervention.duration_hours = duree
+    intervention.assigned_to = membre
+    intervention.surface = _to_float(request.POST.get("surface"))
+    cout = _to_float(request.POST.get("cost"))
+    intervention.cost = cout if cout is not None else None
+    intervention.notes = (request.POST.get("notes") or "").strip()
+    intervention.save()
+    messages.success(request, _("Heures enregistrées."))
+    return _retour_parcelle(request, parcelle)
+
+
+@login_required
+@require_POST
+def heures_delete(request, parcelle_pk, pk):
+    from interventions.models import Intervention
+
+    exploitation = _exploitation_or_redirect(request)
+    parcelle = get_object_or_404(Parcelle, pk=parcelle_pk, exploitation=exploitation)
+    get_object_or_404(Intervention, pk=pk, parcelle=parcelle, exploitation=exploitation).delete()
+    messages.success(request, _("Intervention supprimée."))
+    return _retour_parcelle(request, parcelle)
 
 
 @login_required
@@ -493,7 +630,7 @@ def parcelle_edit(request, pk):
          "page_title": _("Modifier %(n)s") % {"n": parcelle.name},
          # Ce que la parcelle a produit et le temps qu'elle a demandé : on modifie une fiche
          # en ayant sous les yeux ce qu'elle a donné.
-         **analyse.synthese(parcelle)},
+         **_contexte_production(parcelle, exploitation)},
     )
 
 
