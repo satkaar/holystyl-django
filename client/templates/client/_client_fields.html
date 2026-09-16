@@ -1,133 +1,190 @@
-{% load i18n %}
-<div x-data="{ cat: '{{ c.categorie|default:"professionnel" }}' }" class="space-y-3">
+{% load i18n %}{% comment %}
+  Les champs d'une fiche client, rangés par rubrique. Ce qui n'a pas de sens
+  pour un particulier — type de professionnel, SIRET, conditions de vente —
+  disparaît avec la catégorie plutôt que de rester à vide.
 
-  <div>
-    <span class="mb-1 block text-sm font-medium">{% trans "Catégorie" %}</span>
-    <div class="flex flex-wrap gap-2">
-      {% for value, label in categories %}
-        <label class="hs-chip-btn cursor-pointer" :class="cat === '{{ value }}' && 'hs-chip-btn-active'">
-          <input type="radio" name="categorie" value="{{ value }}" x-model="cat" class="sr-only w-auto">
-          {{ label }}
-        </label>
-      {% endfor %}
+  Attend `c` (le client, ou rien pour une création) et `p` (préfixe des
+  identifiants), plus `categories`, `types`, `statuts` et `types_voie`.
+{% endcomment %}
+<div x-data="{ cat: '{{ c.categorie|default:"professionnel" }}' }" class="grid items-start gap-5 xl:grid-cols-2">
+
+  <div class="space-y-5">
+    <div class="hs-panel">
+      <div class="hs-panel-head">
+        <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">badge</span></span>
+        <div>
+          <p class="hs-panel-title">{% trans "Identité" %}</p>
+          <p class="hs-panel-sub">{% trans "Qui est ce client, et où il en est avec vous." %}</p>
+        </div>
+      </div>
+      <div class="hs-panel-body space-y-4">
+        <div>
+          <span class="mb-1.5 block text-sm font-medium">{% trans "Catégorie" %}</span>
+          <div class="flex flex-wrap gap-2">
+            {% for value, label in categories %}
+              <label class="hs-chip-btn cursor-pointer" :class="cat === '{{ value }}' && 'hs-chip-btn-active'">
+                <input type="radio" name="categorie" value="{{ value }}" x-model="cat" class="sr-only w-auto">
+                {{ label }}
+              </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div class="grid gap-4" :class="cat === 'particulier' && 'sm:grid-cols-2'">
+          <div x-show="cat === 'particulier'" x-cloak>
+            <label for="{{ p }}-prenom" class="mb-1.5 block text-sm font-medium">{% trans "Prénom" %}</label>
+            <input id="{{ p }}-prenom" name="prenom" value="{{ c.prenom|default:'' }}" placeholder="{% trans 'ex: Marie' %}">
+          </div>
+          <div>
+            <label for="{{ p }}-nom" class="mb-1.5 block text-sm font-medium">
+              <span x-text="cat === 'particulier' ? '{% trans "Nom" %}' : '{% trans "Nom / raison sociale" %}'">{% trans "Nom / raison sociale" %}</span>
+              <span style="color: var(--danger)">*</span>
+            </label>
+            <input id="{{ p }}-nom" name="nom" required value="{{ c.nom|default:'' }}"
+                   :placeholder="cat === 'particulier' ? '{% trans "ex: Dupont" %}' : '{% trans "ex: Coopérative du Ventoux" %}'">
+          </div>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div x-show="cat === 'professionnel'" x-cloak>
+            <label for="{{ p }}-type" class="mb-1.5 block text-sm font-medium">{% trans "Type de professionnel" %}</label>
+            <select id="{{ p }}-type" name="type_client">{% for value, label in types %}<option value="{{ value }}"{% if c.type_client == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+          </div>
+          <div>
+            <label for="{{ p }}-statut" class="mb-1.5 block text-sm font-medium">{% trans "Statut" %}</label>
+            <select id="{{ p }}-statut" name="statut">{% for value, label in statuts %}<option value="{{ value }}"{% if c.statut == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+          </div>
+        </div>
+
+        <div x-show="cat === 'professionnel'" x-cloak>
+          <label for="{{ p }}-contact" class="mb-1.5 block text-sm font-medium">{% trans "Contact principal" %}</label>
+          <input id="{{ p }}-contact" name="contact_principal" value="{{ c.contact_principal|default:'' }}" placeholder="{% trans 'nom de l’interlocuteur' %}">
+        </div>
+      </div>
+    </div>
+
+    <div class="hs-panel">
+      <div class="hs-panel-head">
+        <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">call</span></span>
+        <div>
+          <p class="hs-panel-title">{% trans "Coordonnées" %}</p>
+          <p class="hs-panel-sub">{% trans "Par où le joindre." %}</p>
+        </div>
+      </div>
+      <div class="hs-panel-body space-y-4">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="{{ p }}-email" class="mb-1.5 block text-sm font-medium">{% trans "Email" %}</label>
+            <input id="{{ p }}-email" name="email" type="email" value="{{ c.email|default:'' }}" placeholder="contact@exemple.fr">
+          </div>
+          <div>
+            <label for="{{ p }}-tel" class="mb-1.5 block text-sm font-medium">{% trans "Téléphone" %}</label>
+            <input id="{{ p }}-tel" name="telephone" value="{{ c.telephone|default:'' }}" placeholder="06 12 34 56 78">
+          </div>
+        </div>
+        <div x-show="cat === 'professionnel'" x-cloak>
+          <label for="{{ p }}-web" class="mb-1.5 block text-sm font-medium">{% trans "Site web" %}</label>
+          <input id="{{ p }}-web" name="site_web" value="{{ c.site_web|default:'' }}" placeholder="https://">
+        </div>
+      </div>
+    </div>
+
+    <div class="hs-panel">
+      <div class="hs-panel-head">
+        <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">place</span></span>
+        <div>
+          <p class="hs-panel-title">{% trans "Adresse" %}</p>
+          <p class="hs-panel-sub">{% trans "Celle qui figurera sur les factures et les livraisons." %}</p>
+        </div>
+      </div>
+      <div class="hs-panel-body space-y-4">
+        <div class="grid gap-4 sm:grid-cols-3">
+          <div>
+            <label for="{{ p }}-numero-voie" class="mb-1.5 block text-sm font-medium">{% trans "N° voie" %}</label>
+            <input id="{{ p }}-numero-voie" name="numero_voie" value="{{ c.numero_voie|default:'' }}" placeholder="12">
+          </div>
+          <div>
+            <label for="{{ p }}-type-voie" class="mb-1.5 block text-sm font-medium">{% trans "Catégorie de voie" %}</label>
+            <select id="{{ p }}-type-voie" name="type_voie">
+              <option value="">—</option>
+              {% for value, label in types_voie %}<option value="{{ value }}"{% if c.type_voie == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="{{ p }}-voie" class="mb-1.5 block text-sm font-medium">{% trans "Voie" %}</label>
+            <input id="{{ p }}-voie" name="voie" value="{{ c.voie|default:'' }}" placeholder="{% trans 'des Vergers' %}">
+          </div>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-3">
+          <div>
+            <label for="{{ p }}-cp" class="mb-1.5 block text-sm font-medium">{% trans "Code postal" %}</label>
+            <input id="{{ p }}-cp" name="code_postal" value="{{ c.code_postal|default:'' }}">
+          </div>
+          <div>
+            <label for="{{ p }}-ville" class="mb-1.5 block text-sm font-medium">{% trans "Ville" %}</label>
+            <input id="{{ p }}-ville" name="ville" value="{{ c.ville|default:'' }}">
+          </div>
+          <div>
+            <label for="{{ p }}-pays" class="mb-1.5 block text-sm font-medium">{% trans "Pays" %}</label>
+            <input id="{{ p }}-pays" name="pays" value="{{ c.pays|default:'' }}" placeholder="{% trans 'France' %}">
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
-  <div class="grid gap-3" :class="cat === 'particulier' && 'grid-cols-2'">
-    <div x-show="cat === 'particulier'" x-cloak>
-      <label for="{{ p }}-prenom" class="mb-1 block text-sm font-medium">{% trans "Prénom" %}</label>
-      <input id="{{ p }}-prenom" name="prenom" value="{{ c.prenom|default:'' }}" placeholder="{% trans 'ex: Marie' %}">
+  <div class="space-y-5">
+    {# Facturation et conditions de vente : sans objet pour un particulier. #}
+    <div class="hs-panel" x-show="cat === 'professionnel'" x-cloak>
+      <div class="hs-panel-head">
+        <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">receipt_long</span></span>
+        <div>
+          <p class="hs-panel-title">{% trans "Facturation" %}</p>
+          <p class="hs-panel-sub">{% trans "Identifiants et conditions de vente." %}</p>
+        </div>
+      </div>
+      <div class="hs-panel-body space-y-4">
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="{{ p }}-siret" class="mb-1.5 block text-sm font-medium">{% trans "SIRET" %}</label>
+            <input id="{{ p }}-siret" name="siret" value="{{ c.siret|default:'' }}">
+          </div>
+          <div>
+            <label for="{{ p }}-tva" class="mb-1.5 block text-sm font-medium">{% trans "TVA intracommunautaire" %}</label>
+            <input id="{{ p }}-tva" name="tva_intracom" value="{{ c.tva_intracom|default:'' }}">
+          </div>
+        </div>
+        <div>
+          <label for="{{ p }}-pdp" class="mb-1.5 block text-sm font-medium">{% trans "Adresse de facturation électronique" %}</label>
+          <input id="{{ p }}-pdp" name="superpdp_adresse" value="{{ c.superpdp_adresse|default:'' }}" placeholder="0225:315143296_68152">
+          <p class="mt-1 text-xs" style="color: var(--text-muted)">{% trans "Identifiant d'annuaire, nécessaire pour lui transmettre une facture." %}</p>
+        </div>
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label for="{{ p }}-delai" class="mb-1.5 block text-sm font-medium">{% trans "Délai de paiement (jours)" %}</label>
+            <input id="{{ p }}-delai" name="delai_paiement_jours" type="number" min="0" step="1" inputmode="numeric" value="{{ c.delai_paiement_jours|default_if_none:'' }}" placeholder="30">
+          </div>
+          <div>
+            <label for="{{ p }}-ca" class="mb-1.5 block text-sm font-medium">{% trans "CA annuel (€)" %}</label>
+            <input id="{{ p }}-ca" name="ca_annuel" type="number" step="0.01" min="0" inputmode="decimal" value="{{ c.ca_annuel|default_if_none:'' }}" placeholder="0.00">
+          </div>
+        </div>
+      </div>
     </div>
-    <div>
-      <label for="{{ p }}-nom" class="mb-1 block text-sm font-medium">
-        <span x-text="cat === 'particulier' ? '{% trans "Nom" %}' : '{% trans "Nom / raison sociale" %}'">{% trans "Nom / raison sociale" %}</span>
-        <span style="color: var(--danger)">*</span>
-      </label>
-      <input id="{{ p }}-nom" name="nom" required value="{{ c.nom|default:'' }}"
-             :placeholder="cat === 'particulier' ? '{% trans "ex: Dupont" %}' : '{% trans "ex: Coopérative du Ventoux" %}'">
+
+    <div class="hs-panel">
+      <div class="hs-panel-head">
+        <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">sticky_note_2</span></span>
+        <div>
+          <p class="hs-panel-title">{% trans "Notes" %}</p>
+          <p class="hs-panel-sub">{% trans "Ce qu'il faut se rappeler avant de le rappeler." %}</p>
+        </div>
+      </div>
+      <div class="hs-panel-body">
+        <label for="{{ p }}-notes" class="sr-only">{% trans "Notes" %}</label>
+        <textarea id="{{ p }}-notes" name="notes" rows="6" placeholder="{% trans 'conditions de vente, historique…' %}">{{ c.notes|default:'' }}</textarea>
+        {% include "partials/_ai_text_tools.html" with target=p|add:"-notes" contexte=_("Notes sur un client de l'exploitation") %}
+      </div>
     </div>
   </div>
-
-  <div class="grid grid-cols-2 gap-3">
-    <div x-show="cat === 'professionnel'" x-cloak>
-      <label for="{{ p }}-type" class="mb-1 block text-sm font-medium">{% trans "Type de professionnel" %}</label>
-      <select id="{{ p }}-type" name="type_client">{% for value, label in types %}<option value="{{ value }}"{% if c.type_client == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-    </div>
-    <div>
-      <label for="{{ p }}-statut" class="mb-1 block text-sm font-medium">{% trans "Statut" %}</label>
-      <select id="{{ p }}-statut" name="statut">{% for value, label in statuts %}<option value="{{ value }}"{% if c.statut == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>
-    </div>
-  </div>
-
-  <div x-show="cat === 'professionnel'" x-cloak>
-    <label for="{{ p }}-contact" class="mb-1 block text-sm font-medium">{% trans "Contact principal" %}</label>
-    <input id="{{ p }}-contact" name="contact_principal" value="{{ c.contact_principal|default:'' }}" placeholder="{% trans 'nom de l’interlocuteur' %}">
-  </div>
-
-  <div class="grid grid-cols-2 gap-3">
-    <div>
-      <label for="{{ p }}-email" class="mb-1 block text-sm font-medium">{% trans "Email" %}</label>
-      <input id="{{ p }}-email" name="email" type="email" value="{{ c.email|default:'' }}" placeholder="contact@exemple.fr">
-    </div>
-    <div>
-      <label for="{{ p }}-tel" class="mb-1 block text-sm font-medium">{% trans "Téléphone" %}</label>
-      <input id="{{ p }}-tel" name="telephone" value="{{ c.telephone|default:'' }}" placeholder="06 12 34 56 78">
-    </div>
-  </div>
-
-  <div class="grid grid-cols-3 gap-3">
-    <div>
-      <label for="{{ p }}-numero-voie" class="mb-1 block text-sm font-medium">{% trans "N° voie" %}</label>
-      <input id="{{ p }}-numero-voie" name="numero_voie" value="{{ c.numero_voie|default:'' }}" placeholder="12">
-    </div>
-    <div>
-      <label for="{{ p }}-type-voie" class="mb-1 block text-sm font-medium">{% trans "Catégorie de voie" %}</label>
-      <select id="{{ p }}-type-voie" name="type_voie">
-        <option value="">—</option>
-        {% for value, label in types_voie %}<option value="{{ value }}"{% if c.type_voie == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
-      </select>
-    </div>
-    <div>
-      <label for="{{ p }}-voie" class="mb-1 block text-sm font-medium">{% trans "Voie" %}</label>
-      <input id="{{ p }}-voie" name="voie" value="{{ c.voie|default:'' }}" placeholder="{% trans 'des Vergers' %}">
-    </div>
-  </div>
-
-  <div class="grid grid-cols-3 gap-3">
-    <div>
-      <label for="{{ p }}-cp" class="mb-1 block text-sm font-medium">{% trans "Code postal" %}</label>
-      <input id="{{ p }}-cp" name="code_postal" value="{{ c.code_postal|default:'' }}">
-    </div>
-    <div>
-      <label for="{{ p }}-ville" class="mb-1 block text-sm font-medium">{% trans "Ville" %}</label>
-      <input id="{{ p }}-ville" name="ville" value="{{ c.ville|default:'' }}">
-    </div>
-    <div>
-      <label for="{{ p }}-pays" class="mb-1 block text-sm font-medium">{% trans "Pays" %}</label>
-      <input id="{{ p }}-pays" name="pays" value="{{ c.pays|default:'' }}" placeholder="{% trans 'France' %}">
-    </div>
-  </div>
-
-  {# SIRET et TVA : sans objet pour un particulier #}
-  <div x-show="cat === 'professionnel'" x-cloak class="grid grid-cols-2 gap-3">
-    <div>
-      <label for="{{ p }}-siret" class="mb-1 block text-sm font-medium">{% trans "SIRET" %}</label>
-      <input id="{{ p }}-siret" name="siret" value="{{ c.siret|default:'' }}">
-    </div>
-    <div>
-      <label for="{{ p }}-tva" class="mb-1 block text-sm font-medium">{% trans "TVA intracommunautaire" %}</label>
-      <input id="{{ p }}-tva" name="tva_intracom" value="{{ c.tva_intracom|default:'' }}">
-    </div>
-  </div>
-
-  {# Facturation électronique : l'adresse d'annuaire du client #}
-  <div x-show="cat === 'professionnel'" x-cloak>
-    <label for="{{ p }}-pdp" class="mb-1 block text-sm font-medium">{% trans "Adresse de facturation électronique" %}</label>
-    <input id="{{ p }}-pdp" name="superpdp_adresse" value="{{ c.superpdp_adresse|default:'' }}" placeholder="0225:315143296_68152">
-    <p class="mt-1 text-xs" style="color: var(--text-muted)">{% trans "Identifiant d'annuaire, nécessaire pour lui transmettre une facture." %}</p>
-  </div>
-
-  {# Conditions commerciales : sans objet pour un particulier #}
-  <div x-show="cat === 'professionnel'" x-cloak class="grid grid-cols-2 gap-3">
-    <div>
-      <label for="{{ p }}-delai" class="mb-1 block text-sm font-medium">{% trans "Délai de paiement (jours)" %}</label>
-      <input id="{{ p }}-delai" name="delai_paiement_jours" type="number" min="0" step="1" inputmode="numeric" value="{{ c.delai_paiement_jours|default_if_none:'' }}" placeholder="30">
-    </div>
-    <div>
-      <label for="{{ p }}-ca" class="mb-1 block text-sm font-medium">{% trans "CA annuel (€)" %}</label>
-      <input id="{{ p }}-ca" name="ca_annuel" type="number" step="0.01" min="0" inputmode="decimal" value="{{ c.ca_annuel|default_if_none:'' }}" placeholder="0.00">
-    </div>
-  </div>
-
-  <div x-show="cat === 'professionnel'" x-cloak>
-    <label for="{{ p }}-web" class="mb-1 block text-sm font-medium">{% trans "Site web" %}</label>
-    <input id="{{ p }}-web" name="site_web" value="{{ c.site_web|default:'' }}" placeholder="https://">
-  </div>
-
-  <div>
-    <label for="{{ p }}-notes" class="mb-1 block text-sm font-medium">{% trans "Notes" %}</label>
-    <textarea id="{{ p }}-notes" name="notes" rows="3" placeholder="{% trans 'conditions de vente, historique…' %}">{{ c.notes|default:'' }}</textarea>
-    {% include "partials/_ai_text_tools.html" with target=p|add:"-notes" contexte=_("Notes sur un client de l'exploitation") %}
-  </div>
-
 </div>

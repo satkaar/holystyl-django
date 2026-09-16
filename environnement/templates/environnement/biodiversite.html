@@ -2,14 +2,21 @@
 {% load i18n l10n %}
 
 {% block content %}
-<section class="space-y-5" x-data="biodivPage()">
+<section class="hs-contraste space-y-5 pb-6" x-data="biodivPage()">
 
   {# ── En-tête ── #}
   <p class="hs-crumb">{% trans "Environnement" %} · {% trans "Biodiversité" %}</p>
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <h1 class="text-[20px]">{% trans "Biodiversité" %}</h1>
+    <div>
+      <h1 class="text-[20px]">{% trans "Biodiversité" %}</h1>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        {% trans "Ce que vous observez parcelle par parcelle : espèces, haies, jachères." %}
+      </p>
+    </div>
     <div class="flex items-center gap-2">
-      <button type="button" @click="openAdd()" class="hs-btn-primary">{% trans "Nouvelle fiche" %}</button>
+      <button type="button" @click="openAdd()" class="hs-btn-primary">
+        <span class="material-icons-round text-[18px]">add</span>{% trans "Nouvelle fiche" %}
+      </button>
     </div>
   </div>
 
@@ -34,7 +41,14 @@
   </div>
 
   {# ── Fiches biodiversité ── #}
-  <div class="hs-card overflow-hidden">
+  <div class="hs-panel">
+    <div class="hs-panel-head">
+      <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">eco</span></span>
+      <div>
+        <p class="hs-panel-title">{% trans "Relevés" %}</p>
+        <p class="hs-panel-sub">{% trans "Un relevé par parcelle et par date." %}</p>
+      </div>
+    </div>
     <table class="hs-table">
       <thead>
         <tr>
@@ -69,17 +83,17 @@
               <div class="flex items-center justify-end gap-1">
                 <button type="button" title="{% trans 'Voir' %}"
                         @click="openView({ parcelle: '{{ f.parcelle.name|escapejs }}', date: '{{ f.date|date:"d/m/Y" }}', score: '{{ f.score|default_if_none:0 }}', veg: '{{ f.especes_vegetales|default_if_none:"—" }}', anim: '{{ f.especes_animales|default_if_none:"—" }}', haies: '{{ f.haies_ml|default_if_none:"—"|unlocalize }}', jachere: '{{ f.jachere_ha|default_if_none:"—"|unlocalize }}', obs: '{{ f.observations|escapejs }}' })"
-                        class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-muted)">
+                        class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-secondary)">
                   <span class="material-icons-round text-[18px]">visibility</span>
                 </button>
                 <button type="button" title="{% trans 'Modifier' %}"
                         @click="openEdit({ action: '{% url 'environnement:biodiversite_edit' f.pk %}', parcelle: '{{ f.parcelle_id }}', date: '{{ f.date|date:"Y-m-d" }}', score: '{{ f.score|default_if_none:0 }}', veg: '{{ f.especes_vegetales|default_if_none:"" }}', anim: '{{ f.especes_animales|default_if_none:"" }}', haies: '{{ f.haies_ml|default_if_none:""|unlocalize }}', jachere: '{{ f.jachere_ha|default_if_none:""|unlocalize }}', obs: '{{ f.observations|escapejs }}' })"
-                        class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-muted)">
+                        class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
                   <span class="material-icons-round text-[18px]">edit</span>
                 </button>
                 <button type="button" title="{% trans 'Supprimer' %}"
                         @click="del = { open: true, action: '{% url 'environnement:biodiversite_delete' f.pk %}', name: '{{ f.parcelle.name|escapejs }} — {{ f.date|date:"d/m/Y" }}' }"
-                        class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-muted)">
+                        class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--danger)">
                   <span class="material-icons-round text-[18px]">delete_outline</span>
                 </button>
               </div>
@@ -99,78 +113,147 @@
     {% endif %}
   </div>
 
-  {# ── Modal — Créer / modifier une fiche ── #}
+  {% comment %}Créer ou modifier une fiche, en plein écran comme les autres
+  saisies. `margin: 0` : la liste espace ses enfants, et cette marge décalerait
+  la fenêtre. Le fond est porté par l'intérieur, pour que la navigation reste
+  visible sous son voile.{% endcomment %}
   <div x-show="modal" x-cloak x-transition.opacity @keydown.escape.window="modal = false"
-       class="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/40 p-4 lg:pl-[var(--nav-offset)]">
-    <div @click.self="modal = false" class="my-auto flex w-full max-w-5xl justify-center">
-      <div class="hs-popover w-full max-w-5xl p-5">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="text-[15px] font-medium" x-text="editing ? '{% trans "Modifier la fiche" %}' : '{% trans "Nouvelle fiche biodiversité" %}'">{% trans "Nouvelle fiche biodiversité" %}</h3>
-          <button type="button" @click="modal = false" class="grid h-8 w-8 place-items-center rounded-full hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-muted)">✕</button>
+       class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)"
+       role="dialog" aria-modal="true" aria-labelledby="biodiv-titre">
+    <div class="min-h-screen" style="background: var(--page)">
+
+      <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+           style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+        <div class="flex min-w-0 items-center gap-3">
+          <button type="button" @click="modal = false" title="{% trans 'Fermer' %}"
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+            <span class="material-icons-round text-[22px]">arrow_back</span>
+          </button>
+          <div class="min-w-0">
+            <h2 id="biodiv-titre" class="truncate text-[20px]"
+                x-text="editing ? '{% trans "Modifier la fiche" %}' : '{% trans "Nouvelle fiche biodiversité" %}'">{% trans "Nouvelle fiche biodiversité" %}</h2>
+            <p class="hs-panel-sub">{% trans "Ce que vous avez vu sur la parcelle, ce jour-là." %}</p>
+          </div>
         </div>
-
         {% if parcelles %}
-          <form method="post" :action="action" class="space-y-4">
-            {% csrf_token %}
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label for="biodiv-parcelle" class="mb-1 block text-[13px] font-medium">{% trans "Parcelle" %} <span style="color: var(--danger)">*</span></label>
-                <select id="biodiv-parcelle" name="parcelle" required x-model="form.parcelle" class="w-full">
-                  <option value="">{% trans "Sélectionner" %}</option>
-                  {% for p in parcelles %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
-                </select>
-              </div>
-              <div>
-                <label for="biodiv-date" class="mb-1 block text-[13px] font-medium">{% trans "Date" %}</label>
-                <input id="biodiv-date" name="date" type="date" x-model="form.date" class="w-full">
-              </div>
-            </div>
-
-            {# ── Jauge de score ── #}
-            <div class="rounded-xl p-4" style="border: 0.5px solid var(--border); background: var(--surface-alt)">
-              <div class="flex items-end justify-between">
-                <label class="text-[13px] font-medium">{% trans "Score biodiversité" %}</label>
-                <div class="flex items-baseline gap-2">
-                  <span class="text-4xl font-medium leading-none tabular-nums" :style="`color:${color()}`" x-text="form.score"></span>
-                  <span class="text-xs font-medium uppercase tracking-wide" :style="`color:${color()}`" x-text="label()"></span>
-                </div>
-              </div>
-              <input name="score" type="range" min="0" max="100" step="1" x-model.number="form.score"
-                     :style="`--thumb:${color()}; --track:${track()}`" class="score-slider mt-3">
-              <div class="mt-1.5 flex justify-between text-[11px]" style="color: var(--text-muted)"><span>0</span><span>50</span><span>100</span></div>
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
-              <div>
-                <label for="biodiv-especes_vegetales" class="mb-1 block text-[13px] font-medium">{% trans "Espèces végétales" %}</label>
-                <input id="biodiv-especes_vegetales" name="especes_vegetales" type="number" min="0" placeholder="0" inputmode="numeric" x-model="form.veg" class="w-full">
-              </div>
-              <div>
-                <label for="biodiv-especes_animales" class="mb-1 block text-[13px] font-medium">{% trans "Espèces animales" %}</label>
-                <input id="biodiv-especes_animales" name="especes_animales" type="number" min="0" placeholder="0" inputmode="numeric" x-model="form.anim" class="w-full">
-              </div>
-              <div>
-                <label for="biodiv-haies_ml" class="mb-1 block text-[13px] font-medium">{% trans "Haies (ml)" %}</label>
-                <input id="biodiv-haies_ml" name="haies_ml" type="number" step="0.1" min="0" placeholder="0" inputmode="decimal" x-model="form.haies" class="w-full">
-              </div>
-              <div>
-                <label for="biodiv-jachere_ha" class="mb-1 block text-[13px] font-medium">{% trans "Jachère (ha)" %}</label>
-                <input id="biodiv-jachere_ha" name="jachere_ha" type="number" step="0.1" min="0" placeholder="0" inputmode="decimal" x-model="form.jachere" class="w-full">
-              </div>
-            </div>
-            <div>
-              <label for="biodiv-observations" class="mb-1 block text-[13px] font-medium">{% trans "Observations" %}</label>
-              <textarea id="biodiv-observations" name="observations" rows="2" x-model="form.obs" placeholder="{% trans 'Espèces notables, conditions d’observation...' %}" class="w-full"></textarea>
-            </div>
-            <div class="flex justify-end gap-2 pt-1">
-              <button type="button" @click="modal = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
-              <button type="submit" class="hs-btn-primary">{% trans "Enregistrer" %}</button>
-            </div>
-          </form>
-        {% else %}
-          <p class="text-[13px]" style="color: var(--text-secondary)">{% trans "Ajoutez d'abord une parcelle (Mes Parcelles) pour créer une fiche biodiversité." %}</p>
+          <div class="flex items-center gap-2">
+            <button type="button" @click="modal = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+            <button type="submit" form="biodiv-form" class="hs-btn-primary">
+              <span class="material-icons-round text-[18px]">save</span>{% trans "Enregistrer" %}
+            </button>
+          </div>
         {% endif %}
       </div>
+
+      {% if parcelles %}
+        <form id="biodiv-form" method="post" :action="action" class="px-5 py-5 pb-8">
+          {% csrf_token %}
+          <div class="grid items-start gap-5 xl:grid-cols-2">
+
+            <div class="space-y-5">
+              <div class="hs-panel">
+                <div class="hs-panel-head">
+                  <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">place</span></span>
+                  <div>
+                    <p class="hs-panel-title">{% trans "Le relevé" %}</p>
+                    <p class="hs-panel-sub">{% trans "Où et quand l'observation a eu lieu." %}</p>
+                  </div>
+                </div>
+                <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label for="biodiv-parcelle" class="mb-1.5 block text-sm font-medium">{% trans "Parcelle" %} <span style="color: var(--danger)">*</span></label>
+                    <select id="biodiv-parcelle" name="parcelle" required x-model="form.parcelle">
+                      <option value="">{% trans "Sélectionner" %}</option>
+                      {% for p in parcelles %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label for="biodiv-date" class="mb-1.5 block text-sm font-medium">{% trans "Date" %}</label>
+                    <input id="biodiv-date" name="date" type="date" x-model="form.date">
+                  </div>
+                </div>
+              </div>
+
+              <div class="hs-panel">
+                <div class="hs-panel-head">
+                  <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">speed</span></span>
+                  <div>
+                    <p class="hs-panel-title">{% trans "Score biodiversité" %}</p>
+                    <p class="hs-panel-sub">{% trans "Votre appréciation d'ensemble, de 0 à 100." %}</p>
+                  </div>
+                </div>
+                <div class="hs-panel-body">
+                  <div class="flex items-end justify-between">
+                    <label for="biodiv-score" class="text-sm font-medium">{% trans "Score" %}</label>
+                    <div class="flex items-baseline gap-2">
+                      <span class="text-4xl font-medium leading-none tabular-nums" :style="`color:${color()}`" x-text="form.score"></span>
+                      <span class="text-xs font-medium uppercase tracking-wide" :style="`color:${color()}`" x-text="label()"></span>
+                    </div>
+                  </div>
+                  <input id="biodiv-score" name="score" type="range" min="0" max="100" step="1" x-model.number="form.score"
+                         :style="`--thumb:${color()}; --track:${track()}`" class="score-slider mt-3">
+                  <div class="mt-1.5 flex justify-between text-[11px]" style="color: var(--text-muted)"><span>0</span><span>50</span><span>100</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="space-y-5">
+              <div class="hs-panel">
+                <div class="hs-panel-head">
+                  <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">forest</span></span>
+                  <div>
+                    <p class="hs-panel-title">{% trans "Ce qui a été compté" %}</p>
+                    <p class="hs-panel-sub">{% trans "Espèces observées, haies et jachères de la parcelle." %}</p>
+                  </div>
+                </div>
+                <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label for="biodiv-especes_vegetales" class="mb-1.5 block text-sm font-medium">{% trans "Espèces végétales" %}</label>
+                    <input id="biodiv-especes_vegetales" name="especes_vegetales" type="number" min="0" placeholder="0" inputmode="numeric" x-model="form.veg">
+                  </div>
+                  <div>
+                    <label for="biodiv-especes_animales" class="mb-1.5 block text-sm font-medium">{% trans "Espèces animales" %}</label>
+                    <input id="biodiv-especes_animales" name="especes_animales" type="number" min="0" placeholder="0" inputmode="numeric" x-model="form.anim">
+                  </div>
+                  <div>
+                    <label for="biodiv-haies_ml" class="mb-1.5 block text-sm font-medium">{% trans "Haies (ml)" %}</label>
+                    <input id="biodiv-haies_ml" name="haies_ml" type="number" step="0.1" min="0" placeholder="0" inputmode="decimal" x-model="form.haies">
+                  </div>
+                  <div>
+                    <label for="biodiv-jachere_ha" class="mb-1.5 block text-sm font-medium">{% trans "Jachère (ha)" %}</label>
+                    <input id="biodiv-jachere_ha" name="jachere_ha" type="number" step="0.1" min="0" placeholder="0" inputmode="decimal" x-model="form.jachere">
+                  </div>
+                </div>
+              </div>
+
+              <div class="hs-panel">
+                <div class="hs-panel-head">
+                  <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">sticky_note_2</span></span>
+                  <div>
+                    <p class="hs-panel-title">{% trans "Observations" %}</p>
+                    <p class="hs-panel-sub">{% trans "Espèces notables, conditions du relevé." %}</p>
+                  </div>
+                </div>
+                <div class="hs-panel-body">
+                  <label for="biodiv-observations" class="sr-only">{% trans "Observations" %}</label>
+                  <textarea id="biodiv-observations" name="observations" rows="6" x-model="form.obs"
+                            placeholder="{% trans 'Espèces notables, conditions d’observation...' %}"></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
+      {% else %}
+        <div class="px-5 py-8">
+          <div class="hs-panel px-6 py-10 text-center">
+            <p class="hs-panel-title">{% trans "Aucune parcelle" %}</p>
+            <p class="mx-auto mt-1 max-w-xl text-[13px]" style="color: var(--text-secondary)">
+              {% trans "Ajoutez d'abord une parcelle (Mes Parcelles) pour créer une fiche biodiversité." %}
+            </p>
+          </div>
+        </div>
+      {% endif %}
     </div>
   </div>
 

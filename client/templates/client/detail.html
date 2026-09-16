@@ -2,7 +2,7 @@
 {% load i18n %}
 
 {% block content %}
-<section class="space-y-5" x-data="{ modal: {{ ouvrir_modification|yesno:'true,false' }} }">
+<section class="hs-contraste space-y-5 pb-6" x-data="{ modal: {{ ouvrir_modification|yesno:'true,false' }} }">
 
   {# ── En-tête ── #}
   <div>
@@ -66,9 +66,16 @@
   </div>
 
   {# ── Coordonnées ── #}
-  <div class="hs-card p-4">
-    <h2 class="mb-3 text-[15px] font-medium">{% trans "Coordonnées" %}</h2>
-    <dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-[13px] sm:grid-cols-2">
+  <div class="hs-panel">
+    <div class="hs-panel-head">
+      <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">call</span></span>
+      <div>
+        <p class="hs-panel-title">{% trans "Coordonnées" %}</p>
+        <p class="hs-panel-sub">{% trans "Par où le joindre, et où lui écrire." %}</p>
+      </div>
+    </div>
+    <div class="hs-panel-body">
+    <dl class="grid grid-cols-1 gap-x-6 gap-y-2 text-[13.5px] sm:grid-cols-2">
       {% if not client.est_particulier %}
         <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Contact principal" %}</dt><dd>{{ client.contact_principal|default:"—" }}</dd></div>
       {% endif %}
@@ -85,6 +92,7 @@
     {% if client.notes %}
       <p class="mt-4 whitespace-pre-line text-[13px]" style="color: var(--text-secondary)">{{ client.notes }}</p>
     {% endif %}
+    </div>
   </div>
 
   {% include "client/_client_modal.html" %}

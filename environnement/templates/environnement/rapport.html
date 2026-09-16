@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% comment %}
+  Le rapport environnemental : rien de neuf, tout de rassemblé. Une rubrique
+  vide le dit franchement et renvoie vers l'écran qui la remplirait — un zéro
+  se lirait comme une performance.
+{% endcomment %}
+
+{% block content %}
+<section class="hs-contraste space-y-5 pb-6">
+
+  <p class="hs-crumb">{% trans "Environnement" %} · {% trans "Rapport environnemental" %}</p>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-[20px]">{% trans "Rapport environnemental" %}</h1>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        {% trans "Eau, azote, carbone, biodiversité et Taxonomie réunis pour une campagne." %}
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <form method="get" class="flex items-center gap-2">
+        <label for="campagne" class="text-[13px]" style="color: var(--text-secondary)">{% trans "Campagne" %}</label>
+        <select id="campagne" name="campagne" class="w-auto" onchange="this.form.submit()">
+          {% for c in campagnes %}<option value="{{ c }}" {% if c == campagne %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </form>
+      <a href="{% url 'environnement:rapport_pdf' %}?campagne={{ campagne }}" target="_blank" rel="noopener" class="hs-btn-primary">
+        <span class="material-icons-round text-[18px]">picture_as_pdf</span>{% trans "Éditer le rapport" %}
+      </a>
+    </div>
+  </div>
+
+  {% if manquantes %}
+    <div class="flex items-start gap-2 rounded-[10px] px-4 py-3 text-[13px]"
+         style="border: 1px solid var(--border-strong); background: var(--surface); color: var(--text)">
+      <span class="material-icons-round text-[18px]" style="color: var(--warning)">info</span>
+      <p>
+        {% blocktrans with liste=manquantes|join:", " %}Rubriques sans donnée sur cette campagne : {{ liste }}. Le rapport les indiquera comme non renseignées.{% endblocktrans %}
+      </p>
+    </div>
+  {% endif %}
+
+  {# ── L'exploitation ── #}
+  <div class="hs-panel">
+    <div class="hs-panel-head">
+      <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">agriculture</span></span>
+      <div class="min-w-0">
+        <p class="hs-panel-title">{{ synthese.exploitation.name|default:_("Mon exploitation") }}</p>
+        <p class="hs-panel-sub">{% blocktrans with c=campagne %}Campagne {{ c }}{% endblocktrans %}</p>
+      </div>
+    </div>
+    <div class="hs-panel-body grid gap-4 sm:grid-cols-3">
+      <div class="hs-tile">
+        <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "SAU" %}</p>
+        <p class="text-[22px]">{{ synthese.sau }}<span class="text-[13px]" style="color: var(--text-muted)"> ha</span></p>
+      </div>
+      <div class="hs-tile">
+        <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Parcelles" %}</p>
+        <p class="text-[22px]">{{ synthese.parcelles }}</p>
+      </div>
+      <div class="hs-tile">
+        <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Certifications" %}</p>
+        <p class="mt-1 text-[13px]" style="color: var(--text)">
+          {% for c in synthese.certifications %}{{ c }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid items-start gap-5 lg:grid-cols-2">
+
+    {# ── Eau ── #}
+    <div class="hs-panel">
+      <div class="hs-panel-head justify-between">
+        <div class="flex min-w-0 items-center gap-3">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">water_drop</span></span>
+          <div class="min-w-0">
+            <p class="hs-panel-title">{% trans "Eau" %}</p>
+            <p class="hs-panel-sub">{% trans "Irrigation et énergie de pompage." %}</p>
+          </div>
+        </div>
+        <a href="{% url 'irrigation:dti' %}" class="hs-btn-outline shrink-0">{% trans "Voir" %}</a>
+      </div>
+      <div class="hs-panel-body">
+        {% if synthese.eau.renseigne %}
+          <dl class="space-y-2 text-[13.5px]" style="color: var(--text)">
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Volume irrigué" %}</dt><dd class="font-medium tabular-nums">{{ synthese.eau.volume_m3|floatformat:"-1" }} m³</dd></div>
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Sessions" %}</dt><dd class="font-medium tabular-nums">{{ synthese.eau.sessions }}</dd></div>
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Énergie de pompage" %}</dt><dd class="font-medium tabular-nums">{{ synthese.eau.energie_kwh|floatformat:"-1" }} kWh</dd></div>
+            {% if synthese.eau.kwh_par_m3 %}
+              <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Énergie par m³" %}</dt><dd class="font-medium tabular-nums">{{ synthese.eau.kwh_par_m3 }} kWh/m³</dd></div>
+            {% endif %}
+            {% if synthese.eau.pct_quota is not None %}
+              <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Part du quota" %}</dt><dd class="font-medium tabular-nums">{{ synthese.eau.pct_quota }} %</dd></div>
+            {% endif %}
+          </dl>
+        {% else %}
+          <p class="text-[13px]" style="color: var(--text-secondary)">{% trans "Aucune session d'irrigation ni relevé d'énergie sur cette campagne." %}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Azote ── #}
+    <div class="hs-panel">
+      <div class="hs-panel-head justify-between">
+        <div class="flex min-w-0 items-center gap-3">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">science</span></span>
+          <div class="min-w-0">
+            <p class="hs-panel-title">{% trans "Azote" %}</p>
+            <p class="hs-panel-sub">{% trans "Apports et plafond de la directive Nitrates." %}</p>
+          </div>
+        </div>
+        <a href="{% url 'environnement:bilan_azote' %}?campagne={{ campagne }}" class="hs-btn-outline shrink-0">{% trans "Voir" %}</a>
+      </div>
+      <div class="hs-panel-body">
+        {% if synthese.azote.renseigne %}
+          <dl class="space-y-2 text-[13.5px]" style="color: var(--text)">
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Azote apporté" %}</dt><dd class="font-medium tabular-nums">{{ synthese.azote.n_total|floatformat:"-1" }} kg N</dd></div>
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Dont effluents d'élevage" %}</dt><dd class="font-medium tabular-nums">{{ synthese.azote.n_effluents|floatformat:"-1" }} kg N</dd></div>
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Moyenne sur la SAU" %}</dt><dd class="font-medium tabular-nums">{{ synthese.azote.n_total_ha|default_if_none:"—" }} kg N/ha</dd></div>
+            <div class="flex justify-between gap-3">
+              <dt style="color: var(--text-secondary)">{% trans "Effluents rapportés à la SAU" %}</dt>
+              <dd class="font-medium tabular-nums" style="color: {% if synthese.azote.depasse %}var(--danger){% else %}var(--success){% endif %}">
+                {{ synthese.azote.effluents_ha|default_if_none:"—" }} / {{ synthese.azote.plafond }} kg N/ha
+              </dd>
+            </div>
+          </dl>
+        {% else %}
+          <p class="text-[13px]" style="color: var(--text-secondary)">{% trans "Aucun apport d'azote enregistré sur cette campagne." %}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Carbone ── #}
+    <div class="hs-panel">
+      <div class="hs-panel-head justify-between">
+        <div class="flex min-w-0 items-center gap-3">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">cloud</span></span>
+          <div class="min-w-0">
+            <p class="hs-panel-title">{% trans "Carbone" %}</p>
+            <p class="hs-panel-sub">{% trans "Estimation, hors diagnostic certifié." %}</p>
+          </div>
+        </div>
+        <a href="{% url 'environnement:empreinte_carbone' %}?campagne={{ campagne }}" class="hs-btn-outline shrink-0">{% trans "Voir" %}</a>
+      </div>
+      <div class="hs-panel-body">
+        {% if synthese.carbone.renseigne %}
+          <dl class="space-y-2 text-[13.5px]" style="color: var(--text)">
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Émissions" %}</dt><dd class="font-medium tabular-nums">{{ synthese.carbone.emissions|floatformat:"-1" }} kg CO₂e</dd></div>
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Carbone stocké" %}</dt><dd class="font-medium tabular-nums">{{ synthese.carbone.stockage|floatformat:"-1" }} kg CO₂e</dd></div>
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Net" %}</dt><dd class="font-medium tabular-nums">{{ synthese.carbone.net|floatformat:"-1" }} kg CO₂e</dd></div>
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Par hectare" %}</dt><dd class="font-medium tabular-nums">{{ synthese.carbone.emissions_ha|default_if_none:"—" }} kg CO₂e/ha</dd></div>
+          </dl>
+          {% if synthese.carbone.sans_facteur %}
+            <p class="mt-3 text-[12.5px]" style="color: var(--danger)">
+              {% blocktrans count n=synthese.carbone.sans_facteur|length %}{{ n }} poste sans facteur d'émission : il ne pèse rien dans le total.{% plural %}{{ n }} postes sans facteur d'émission : ils ne pèsent rien dans le total.{% endblocktrans %}
+            </p>
+          {% endif %}
+        {% else %}
+          <p class="text-[13px]" style="color: var(--text-secondary)">{% trans "Aucun poste d'émission sur cette campagne." %}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Biodiversité ── #}
+    <div class="hs-panel">
+      <div class="hs-panel-head justify-between">
+        <div class="flex min-w-0 items-center gap-3">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">eco</span></span>
+          <div class="min-w-0">
+            <p class="hs-panel-title">{% trans "Biodiversité" %}</p>
+            <p class="hs-panel-sub">{% trans "Relevés de la campagne." %}</p>
+          </div>
+        </div>
+        <a href="{% url 'environnement:biodiversite' %}" class="hs-btn-outline shrink-0">{% trans "Voir" %}</a>
+      </div>
+      <div class="hs-panel-body">
+        {% if synthese.biodiversite.renseigne %}
+          <dl class="space-y-2 text-[13.5px]" style="color: var(--text)">
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Relevés" %}</dt><dd class="font-medium tabular-nums">{{ synthese.biodiversite.fiches }}</dd></div>
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Parcelles suivies" %}</dt><dd class="font-medium tabular-nums">{{ synthese.biodiversite.parcelles_suivies }}</dd></div>
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Score moyen" %}</dt><dd class="font-medium tabular-nums">{{ synthese.biodiversite.score_moyen|default_if_none:"—" }}{% if synthese.biodiversite.score_moyen is not None %}/100{% endif %}</dd></div>
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Haies" %}</dt><dd class="font-medium tabular-nums">{{ synthese.biodiversite.haies_ml|floatformat:"-1" }} ml</dd></div>
+            <div class="flex justify-between gap-3"><dt style="color: var(--text-secondary)">{% trans "Jachère" %}</dt><dd class="font-medium tabular-nums">{{ synthese.biodiversite.jachere_ha|floatformat:"-2" }} ha</dd></div>
+          </dl>
+        {% else %}
+          <p class="text-[13px]" style="color: var(--text-secondary)">{% trans "Aucun relevé de biodiversité sur cette campagne." %}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    {# ── Taxonomie ── #}
+    <div class="hs-panel lg:col-span-2">
+      <div class="hs-panel-head justify-between">
+        <div class="flex min-w-0 items-center gap-3">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">fact_check</span></span>
+          <div class="min-w-0">
+            <p class="hs-panel-title">{% trans "Taxonomie EU" %}</p>
+            <p class="hs-panel-sub">{% trans "Règlement (UE) 2020/852 — part alignée du chiffre d'affaires." %}</p>
+          </div>
+        </div>
+        <a href="{% url 'environnement:taxonomie' %}?campagne={{ synthese.taxonomie.annee }}" class="hs-btn-outline shrink-0">{% trans "Voir" %}</a>
+      </div>
+      <div class="hs-panel-body">
+        {% if synthese.taxonomie.renseigne %}
+          <div class="grid gap-4 sm:grid-cols-3">
+            <div class="hs-tile">
+              <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Fiches d'activité" %}</p>
+              <p class="text-[22px]">{{ synthese.taxonomie.fiches }}</p>
+            </div>
+            <div class="hs-tile">
+              <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Activités alignées" %}</p>
+              <p class="text-[22px]">{{ synthese.taxonomie.alignees }}</p>
+            </div>
+            <div class="hs-tile">
+              <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "CA aligné" %}</p>
+              <p class="text-[22px]">{{ synthese.taxonomie.pct_ca_aligne|default_if_none:"—" }}{% if synthese.taxonomie.pct_ca_aligne is not None %} %{% endif %}</p>
+            </div>
+          </div>
+        {% else %}
+          <p class="text-[13px]" style="color: var(--text-secondary)">
+            {% blocktrans with a=synthese.taxonomie.annee %}Aucune fiche d'activité pour {{ a }}.{% endblocktrans %}
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -127,6 +127,7 @@ def layout(request):
                 {"label": _("Équipe"), "url_name": "equipe:equipe", "icon": "groups"},
                 {"label": _("Tâches"), "url_name": "equipe:taches", "icon": "checklist"},
                 {"label": _("Contrats de travail"), "url_name": "equipe:contrats", "icon": "assignment_ind"},
+                {"label": _("Banque des postes"), "url_name": "equipe:postes", "icon": "work_history"},
                 {"label": _("Offres d'emploi"), "url_name": "equipe:offres", "icon": "work"},
                 {"label": _("Paie"), "url_name": "equipe:paie", "icon": "payments"},
             ],
@@ -197,6 +198,7 @@ def layout(request):
             "url_name": "exploitations:settings",
             "items": [
                 {"label": _("Identités"), "url_name": "exploitations:section_identite", "icon": "badge"},
+                {"label": _("Photo de la ferme"), "url_name": "exploitations:photo", "icon": "photo_camera"},
                 {"label": _("Juridique"), "url_name": "exploitations:section_juridique", "icon": "gavel"},
                 {"label": _("Contact"), "url_name": "exploitations:contact", "icon": "call"},
                 {"label": _("Localisation"), "url_name": "exploitations:section_localisation", "icon": "place"},

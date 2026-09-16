@@ -1,0 +1,534 @@
+{% extends "base.html" %}
+{% load i18n l10n %}
+{% comment %}
+  Santé végétale : le registre des traitements d'un côté, ce qu'on a observé
+  de l'autre. Une ligne incomplète au regard du registre est signalée — un
+  registre qu'on croit en règle et qui ne l'est pas coûte plus cher qu'un
+  registre visiblement à compléter.
+{% endcomment %}
+
+{% block content %}
+<section class="hs-contraste space-y-5 pb-6"
+         x-data="{
+           onglet: 'registre',
+           traitement: false,
+           observation: false,
+           editing: false,
+           action: '',
+           t: { parcelle: '', date: '{{ today }}', culture: '', produit: '', amm: '', type_cible: 'maladie', cible: '', dose: '', unite: '', surface: '', dar: '', operateur: '', conditions: '', notes: '' },
+           o: { parcelle: '', date: '{{ today }}', type_cible: 'maladie', nom: '', intensite: '1', notes: '' },
+           suppr: { open: false, action: '', nom: '' },
+           ouvrirTraitement() {
+             this.editing = false;
+             this.action = '{% url 'environnement:traitement_create' %}';
+             this.t = { parcelle: '', date: '{{ today }}', culture: '', produit: '', amm: '', type_cible: 'maladie', cible: '', dose: '', unite: '', surface: '', dar: '', operateur: '', conditions: '', notes: '' };
+             this.traitement = true;
+           },
+           modifierTraitement(d) {
+             this.editing = true;
+             this.action = d.action;
+             this.t = d.valeurs;
+             this.traitement = true;
+           },
+           ouvrirObservation() {
+             this.editing = false;
+             this.action = '{% url 'environnement:observation_create' %}';
+             this.o = { parcelle: '', date: '{{ today }}', type_cible: 'maladie', nom: '', intensite: '1', notes: '' };
+             this.observation = true;
+           },
+           modifierObservation(d) {
+             this.editing = true;
+             this.action = d.action;
+             this.o = d.valeurs;
+             this.observation = true;
+           },
+         }">
+
+  <p class="hs-crumb">{% trans "Environnement" %} · {% trans "Santé végétale" %}</p>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-[20px]">{% trans "Santé végétale" %}</h1>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        {% trans "Le registre des traitements, et ce que vous avez observé sur les parcelles." %}
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <form method="get" class="flex items-center gap-2">
+        <label for="campagne" class="text-[13px]" style="color: var(--text-secondary)">{% trans "Campagne" %}</label>
+        <select id="campagne" name="campagne" class="w-auto" onchange="this.form.submit()">
+          {% for c in campagnes %}<option value="{{ c }}" {% if c == campagne %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </form>
+      <a href="{% url 'environnement:registre_phyto' %}?campagne={{ campagne }}" target="_blank" rel="noopener" class="hs-btn-outline">
+        <span class="material-icons-round text-[18px]">picture_as_pdf</span>{% trans "Registre" %}
+      </a>
+      <button type="button" @click="ouvrirObservation()" class="hs-btn-outline">
+        <span class="material-icons-round text-[18px]">visibility</span>{% trans "Observation" %}
+      </button>
+      <button type="button" @click="ouvrirTraitement()" class="hs-btn-primary">
+        <span class="material-icons-round text-[18px]">add</span>{% trans "Traitement" %}
+      </button>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Traitements" %}</p>
+      <p class="text-[22px]">{{ bilan.nb_traitements }}</p>
+    </div>
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Parcelles traitées" %}</p>
+      <p class="text-[22px]">{{ bilan.parcelles_traitees }}</p>
+    </div>
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Surface traitée" %}</p>
+      <p class="text-[22px]">{{ bilan.surface_traitee|floatformat:"-2" }}<span class="text-[13px]" style="color: var(--text-muted)"> ha</span></p>
+    </div>
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Observations" %}</p>
+      <p class="text-[22px]">{{ bilan.nb_observations }}</p>
+    </div>
+  </div>
+
+  {% if bilan.incomplets %}
+    <div class="flex items-start gap-2 rounded-[10px] px-4 py-3 text-[13px]"
+         style="border: 1px solid var(--warning); background: color-mix(in srgb, var(--warning) 8%, transparent); color: var(--text)">
+      <span class="material-icons-round text-[18px]" style="color: var(--warning)">warning_amber</span>
+      <p>
+        {% blocktrans count n=bilan.incomplets|length %}{{ n }} ligne du registre est incomplète : il y manque l'AMM, la cible ou la dose. Le registre doit les porter.{% plural %}{{ n }} lignes du registre sont incomplètes : il y manque l'AMM, la cible ou la dose. Le registre doit les porter.{% endblocktrans %}
+      </p>
+    </div>
+  {% endif %}
+
+  <div class="flex gap-[18px] overflow-x-auto" style="border-bottom: 1px solid var(--border-strong)">
+    <button type="button" class="hs-tab" :class="onglet === 'registre' && 'hs-tab-active'" @click="onglet = 'registre'">
+      {% trans "Registre des traitements" %} ({{ bilan.nb_traitements }})
+    </button>
+    <button type="button" class="hs-tab" :class="onglet === 'observations' && 'hs-tab-active'" @click="onglet = 'observations'">
+      {% trans "Observations" %} ({{ bilan.nb_observations }})
+    </button>
+  </div>
+
+  {# ── Registre ── #}
+  <div x-show="onglet === 'registre'" class="hs-panel">
+    <div class="hs-panel-head">
+      <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">local_florist</span></span>
+      <div class="min-w-0">
+        <p class="hs-panel-title">{% trans "Registre des traitements" %}</p>
+        <p class="hs-panel-sub">{% blocktrans %}Campagne {{ campagne }} — à conserver et à présenter en cas de contrôle.{% endblocktrans %}</p>
+      </div>
+    </div>
+
+    {% if bilan.traitements %}
+      <div class="overflow-x-auto">
+        <table class="hs-table">
+          <thead>
+            <tr>
+              <th>{% trans "Date" %}</th>
+              <th>{% trans "Parcelle" %}</th>
+              <th>{% trans "Produit" %}</th>
+              <th>{% trans "AMM" %}</th>
+              <th>{% trans "Cible" %}</th>
+              <th class="num">{% trans "Dose" %}</th>
+              <th class="num">{% trans "Surface" %}</th>
+              <th>{% trans "Récolte possible" %}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for t in bilan.traitements %}
+              <tr>
+                <td>{{ t.date|date:"d/m/Y" }}</td>
+                <td class="font-medium">{{ t.parcelle.name|default:"—" }}{% if t.culture %}<span class="block text-[12px]" style="color: var(--text-secondary)">{{ t.culture }}</span>{% endif %}</td>
+                <td>
+                  {{ t.produit }}
+                  {% if t.origine == "intervention" %}<span class="hs-badge hs-badge-bail ml-1">{% trans "Intervention" %}</span>{% endif %}
+                </td>
+                <td style="color: var(--text-secondary)">
+                  {% if t.numero_amm %}{{ t.numero_amm }}{% else %}<span style="color: var(--warning)">{% trans "à compléter" %}</span>{% endif %}
+                </td>
+                <td style="color: var(--text-secondary)">{{ t.cible|default:t.type_cible }}</td>
+                <td class="num" style="color: var(--text-secondary)">{% if t.dose %}{{ t.dose|floatformat:"-2" }} {{ t.unite_dose }}{% else %}{{ t.unite_dose|default:"—" }}{% endif %}</td>
+                <td class="num" style="color: var(--text-secondary)">{{ t.surface_ha|default_if_none:"—"|floatformat:"-2" }}</td>
+                <td style="color: var(--text-secondary)">{{ t.recolte_possible_le|date:"d/m/Y"|default:"—" }}</td>
+                <td class="num">
+                  <div class="flex items-center justify-end gap-1.5">
+                    {% if t.origine == "saisi" %}
+                      <button type="button" title="{% trans 'Modifier' %}"
+                              @click="modifierTraitement({ action: '{% url 'environnement:traitement_edit' t.id %}', valeurs: { parcelle: '{{ t.parcelle.pk }}', date: '{{ t.date|date:"Y-m-d" }}', culture: '{{ t.culture|escapejs }}', produit: '{{ t.produit|escapejs }}', amm: '{{ t.numero_amm|escapejs }}', type_cible: '{{ t.type_cible|escapejs }}', cible: '{{ t.cible|escapejs }}', dose: '{{ t.dose|default_if_none:""|unlocalize }}', unite: '{{ t.unite_dose|escapejs }}', surface: '{{ t.surface_ha|default_if_none:""|unlocalize }}', dar: '{{ t.delai_avant_recolte|default_if_none:"" }}', operateur: '{{ t.operateur|escapejs }}', conditions: '{{ t.conditions|escapejs }}', notes: '{{ t.notes|escapejs }}' } })"
+                              class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+                        <span class="material-icons-round text-[18px]">edit</span>
+                      </button>
+                      <button type="button" title="{% trans 'Supprimer' %}"
+                              @click="suppr = { open: true, action: '{% url 'environnement:traitement_delete' t.id %}', nom: '{{ t.produit|escapejs }} — {{ t.date|date:"d/m/Y" }}' }"
+                              class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--danger)">
+                        <span class="material-icons-round text-[18px]">delete_outline</span>
+                      </button>
+                    {% else %}
+                      <a href="{% url 'interventions:interventions' %}" title="{% trans 'Voir dans les interventions' %}"
+                         class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-secondary)">
+                        <span class="material-icons-round text-[18px]">open_in_new</span>
+                      </a>
+                    {% endif %}
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="hs-panel-body px-6 py-10 text-center">
+        <span class="hs-panel-icon mx-auto mb-3"><span class="material-icons-round text-[19px]">local_florist</span></span>
+        <p class="hs-panel-title">{% trans "Aucun traitement sur cette campagne" %}</p>
+        <p class="mx-auto mt-1 max-w-xl text-[13px]" style="color: var(--text-secondary)">
+          {% trans "Le registre se tient quelle que soit la taille de l'exploitation et se conserve : il est demandé au contrôle comme à la certification." %}
+        </p>
+        <button type="button" @click="ouvrirTraitement()" class="hs-btn-primary mt-4">
+          <span class="material-icons-round text-[18px]">add</span>{% trans "Enregistrer un traitement" %}
+        </button>
+      </div>
+    {% endif %}
+  </div>
+
+  {# ── Observations ── #}
+  <div x-show="onglet === 'observations'" x-cloak class="hs-panel">
+    <div class="hs-panel-head">
+      <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">visibility</span></span>
+      <div class="min-w-0">
+        <p class="hs-panel-title">{% trans "Observations" %}</p>
+        <p class="hs-panel-sub">{% trans "Ce qui a été vu : maladies, ravageurs, adventices." %}</p>
+      </div>
+    </div>
+
+    {% if bilan.observations %}
+      <div class="overflow-x-auto">
+        <table class="hs-table">
+          <thead>
+            <tr>
+              <th>{% trans "Date" %}</th>
+              <th>{% trans "Parcelle" %}</th>
+              <th>{% trans "Type" %}</th>
+              <th>{% trans "Nom" %}</th>
+              <th>{% trans "Intensité" %}</th>
+              <th>{% trans "Notes" %}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for o in bilan.observations %}
+              <tr>
+                <td>{{ o.date|date:"d/m/Y" }}</td>
+                <td class="font-medium">{{ o.parcelle.name }}</td>
+                <td style="color: var(--text-secondary)">{{ o.get_type_cible_display }}</td>
+                <td>{{ o.nom }}</td>
+                <td>
+                  {% if o.intensite >= 3 %}<span class="hs-badge hs-badge-danger">{{ o.get_intensite_display }}</span>
+                  {% elif o.intensite == 2 %}<span class="hs-badge hs-badge-warning">{{ o.get_intensite_display }}</span>
+                  {% elif o.intensite == 1 %}<span class="hs-badge hs-badge-neutral">{{ o.get_intensite_display }}</span>
+                  {% else %}<span class="hs-badge hs-badge-success">{{ o.get_intensite_display }}</span>{% endif %}
+                </td>
+                <td style="color: var(--text-secondary)">{{ o.notes|truncatechars:60|default:"—" }}</td>
+                <td class="num">
+                  <div class="flex items-center justify-end gap-1.5">
+                    <button type="button" title="{% trans 'Modifier' %}"
+                            @click="modifierObservation({ action: '{% url 'environnement:observation_edit' o.pk %}', valeurs: { parcelle: '{{ o.parcelle.pk }}', date: '{{ o.date|date:"Y-m-d" }}', type_cible: '{{ o.type_cible }}', nom: '{{ o.nom|escapejs }}', intensite: '{{ o.intensite }}', notes: '{{ o.notes|escapejs }}' } })"
+                            class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+                      <span class="material-icons-round text-[18px]">edit</span>
+                    </button>
+                    <button type="button" title="{% trans 'Supprimer' %}"
+                            @click="suppr = { open: true, action: '{% url 'environnement:observation_delete' o.pk %}', nom: '{{ o.nom|escapejs }} — {{ o.date|date:"d/m/Y" }}' }"
+                            class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--danger)">
+                      <span class="material-icons-round text-[18px]">delete_outline</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="hs-panel-body px-6 py-10 text-center">
+        <span class="hs-panel-icon mx-auto mb-3"><span class="material-icons-round text-[19px]">visibility</span></span>
+        <p class="hs-panel-title">{% trans "Aucune observation" %}</p>
+        <p class="mx-auto mt-1 max-w-xl text-[13px]" style="color: var(--text-secondary)">
+          {% trans "Noter ce qu'on voit, même quand il n'y a rien à signaler, justifie de traiter — ou de ne pas traiter." %}
+        </p>
+        <button type="button" @click="ouvrirObservation()" class="hs-btn-primary mt-4">
+          <span class="material-icons-round text-[18px]">add</span>{% trans "Noter une observation" %}
+        </button>
+      </div>
+    {% endif %}
+  </div>
+
+  {% comment %}Saisie d'un traitement, en plein écran. `margin: 0` : la liste
+  espace ses enfants et décalerait la fenêtre ; le fond est porté par
+  l'intérieur pour que la navigation reste visible.{% endcomment %}
+  <div x-show="traitement" x-cloak x-transition.opacity @keydown.escape.window="traitement = false"
+       class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)"
+       role="dialog" aria-modal="true" aria-labelledby="traitement-titre">
+    <div class="min-h-screen" style="background: var(--page)">
+
+      <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+           style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+        <div class="flex min-w-0 items-center gap-3">
+          <button type="button" @click="traitement = false" title="{% trans 'Fermer' %}"
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+            <span class="material-icons-round text-[22px]">arrow_back</span>
+          </button>
+          <div class="min-w-0">
+            <h2 id="traitement-titre" class="truncate text-[20px]"
+                x-text="editing ? '{% trans "Modifier le traitement" %}' : '{% trans "Nouveau traitement" %}'">{% trans "Nouveau traitement" %}</h2>
+            <p class="hs-panel-sub">{% trans "Ce que le registre doit porter." %}</p>
+          </div>
+        </div>
+        {% if parcelles %}
+          <div class="flex items-center gap-2">
+            <button type="button" @click="traitement = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+            <button type="submit" form="traitement-form" class="hs-btn-primary">
+              <span class="material-icons-round text-[18px]">save</span>{% trans "Enregistrer" %}
+            </button>
+          </div>
+        {% endif %}
+      </div>
+
+      {% if parcelles %}
+        <form id="traitement-form" method="post" :action="action" class="px-5 py-5 pb-8">
+          {% csrf_token %}
+          <input type="hidden" name="campagne" value="{{ campagne }}">
+          <div class="grid items-start gap-5 xl:grid-cols-2">
+
+            <div class="space-y-5">
+              <div class="hs-panel">
+                <div class="hs-panel-head">
+                  <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">place</span></span>
+                  <div>
+                    <p class="hs-panel-title">{% trans "Où et quand" %}</p>
+                    <p class="hs-panel-sub">{% trans "La campagne se déduit de la date." %}</p>
+                  </div>
+                </div>
+                <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label for="t-parcelle" class="mb-1.5 block text-sm font-medium">{% trans "Parcelle" %} <span style="color: var(--danger)">*</span></label>
+                    <select id="t-parcelle" name="parcelle" required x-model="t.parcelle"
+                            @change="t.surface = $event.target.selectedOptions[0]?.dataset.area || ''">
+                      <option value="">{% trans "Sélectionner" %}</option>
+                      {% for p in parcelles %}<option value="{{ p.pk }}" data-area="{{ p.area|default_if_none:''|unlocalize }}">{{ p.name }}{% if p.area %} · {{ p.area }} ha{% endif %}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label for="t-date" class="mb-1.5 block text-sm font-medium">{% trans "Date du traitement" %}</label>
+                    <input id="t-date" name="date" type="date" x-model="t.date">
+                  </div>
+                  <div>
+                    <label for="t-culture" class="mb-1.5 block text-sm font-medium">{% trans "Culture traitée" %}</label>
+                    <input id="t-culture" name="culture" maxlength="100" x-model="t.culture">
+                  </div>
+                  <div>
+                    <label for="t-surface" class="mb-1.5 block text-sm font-medium">{% trans "Surface traitée (ha)" %}</label>
+                    <input id="t-surface" name="surface_ha" type="number" step="0.01" min="0" inputmode="decimal" x-model="t.surface">
+                  </div>
+                </div>
+              </div>
+
+              <div class="hs-panel">
+                <div class="hs-panel-head">
+                  <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">person</span></span>
+                  <div>
+                    <p class="hs-panel-title">{% trans "Application" %}</p>
+                    <p class="hs-panel-sub">{% trans "Qui a traité, dans quelles conditions." %}</p>
+                  </div>
+                </div>
+                <div class="hs-panel-body space-y-4">
+                  <div class="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label for="t-operateur" class="mb-1.5 block text-sm font-medium">{% trans "Applicateur" %}</label>
+                      <input id="t-operateur" name="operateur" maxlength="255" x-model="t.operateur">
+                    </div>
+                    <div>
+                      <label for="t-dar" class="mb-1.5 block text-sm font-medium">{% trans "Délai avant récolte (jours)" %}</label>
+                      <input id="t-dar" name="delai_avant_recolte" type="number" min="0" step="1" inputmode="numeric" x-model="t.dar">
+                    </div>
+                  </div>
+                  <div>
+                    <label for="t-conditions" class="mb-1.5 block text-sm font-medium">{% trans "Conditions d'application" %}</label>
+                    <input id="t-conditions" name="conditions" maxlength="255" x-model="t.conditions"
+                           placeholder="{% trans 'ex : temps couvert, vent faible, 18 °C' %}">
+                  </div>
+                  <div>
+                    <label for="t-notes" class="mb-1.5 block text-sm font-medium">{% trans "Notes" %}</label>
+                    <textarea id="t-notes" name="notes" rows="3" x-model="t.notes"></textarea>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">science</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Le produit et sa cible" %}</p>
+                  <p class="hs-panel-sub">{% trans "L'AMM, la cible et la dose sont exigées au registre." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body space-y-4">
+                <div>
+                  <label for="t-produit" class="mb-1.5 block text-sm font-medium">{% trans "Produit" %} <span style="color: var(--danger)">*</span></label>
+                  <input id="t-produit" name="produit" required maxlength="255" x-model="t.produit"
+                         placeholder="{% trans 'nom commercial' %}">
+                </div>
+                <div>
+                  <label for="t-amm" class="mb-1.5 block text-sm font-medium">{% trans "N° AMM" %}</label>
+                  <input id="t-amm" name="numero_amm" maxlength="20" x-model="t.amm" placeholder="ex : 2100024">
+                  <p class="mt-1 text-xs" style="color: var(--text-secondary)">{% trans "Numéro d'autorisation de mise sur le marché, inscrit sur l'étiquette." %}</p>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label for="t-type-cible" class="mb-1.5 block text-sm font-medium">{% trans "Type de cible" %}</label>
+                    <select id="t-type-cible" name="type_cible" x-model="t.type_cible">
+                      {% for value, label in cibles %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label for="t-cible" class="mb-1.5 block text-sm font-medium">{% trans "Cible visée" %}</label>
+                    <input id="t-cible" name="cible" maxlength="255" x-model="t.cible"
+                           placeholder="{% trans 'ex : mildiou, puceron vert' %}">
+                  </div>
+                  <div>
+                    <label for="t-dose" class="mb-1.5 block text-sm font-medium">{% trans "Dose appliquée" %}</label>
+                    <input id="t-dose" name="dose" type="number" step="0.001" min="0" inputmode="decimal" x-model="t.dose">
+                  </div>
+                  <div>
+                    <label for="t-unite" class="mb-1.5 block text-sm font-medium">{% trans "Unité" %}</label>
+                    <input id="t-unite" name="unite_dose" maxlength="20" x-model="t.unite" placeholder="{% trans 'L/ha, kg/ha' %}">
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </form>
+      {% else %}
+        <div class="px-5 py-8">
+          <div class="hs-panel px-6 py-10 text-center">
+            <p class="hs-panel-title">{% trans "Aucune parcelle" %}</p>
+            <p class="mx-auto mt-1 max-w-xl text-[13px]" style="color: var(--text-secondary)">
+              {% trans "Ajoutez d'abord une parcelle (Mes Parcelles) pour tenir le registre." %}
+            </p>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Saisie d'une observation ── #}
+  <div x-show="observation" x-cloak x-transition.opacity @keydown.escape.window="observation = false"
+       class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)"
+       role="dialog" aria-modal="true" aria-labelledby="observation-titre">
+    <div class="min-h-screen" style="background: var(--page)">
+
+      <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+           style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+        <div class="flex min-w-0 items-center gap-3">
+          <button type="button" @click="observation = false" title="{% trans 'Fermer' %}"
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+            <span class="material-icons-round text-[22px]">arrow_back</span>
+          </button>
+          <div class="min-w-0">
+            <h2 id="observation-titre" class="truncate text-[20px]"
+                x-text="editing ? '{% trans "Modifier l\'observation" %}' : '{% trans "Nouvelle observation" %}'">{% trans "Nouvelle observation" %}</h2>
+            <p class="hs-panel-sub">{% trans "Même « rien à signaler » mérite d'être noté." %}</p>
+          </div>
+        </div>
+        {% if parcelles %}
+          <div class="flex items-center gap-2">
+            <button type="button" @click="observation = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+            <button type="submit" form="observation-form" class="hs-btn-primary">
+              <span class="material-icons-round text-[18px]">save</span>{% trans "Enregistrer" %}
+            </button>
+          </div>
+        {% endif %}
+      </div>
+
+      {% if parcelles %}
+        <form id="observation-form" method="post" :action="action" class="px-5 py-5 pb-8">
+          {% csrf_token %}
+          <input type="hidden" name="campagne" value="{{ campagne }}">
+          <div class="hs-panel mx-auto max-w-3xl">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">visibility</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "Ce qui a été vu" %}</p>
+                <p class="hs-panel-sub">{% trans "Sur quelle parcelle, quand, et avec quelle intensité." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+              <div>
+                <label for="o-parcelle" class="mb-1.5 block text-sm font-medium">{% trans "Parcelle" %} <span style="color: var(--danger)">*</span></label>
+                <select id="o-parcelle" name="parcelle" required x-model="o.parcelle">
+                  <option value="">{% trans "Sélectionner" %}</option>
+                  {% for p in parcelles %}<option value="{{ p.pk }}">{{ p.name }}</option>{% endfor %}
+                </select>
+              </div>
+              <div>
+                <label for="o-date" class="mb-1.5 block text-sm font-medium">{% trans "Date" %}</label>
+                <input id="o-date" name="date" type="date" x-model="o.date">
+              </div>
+              <div>
+                <label for="o-type" class="mb-1.5 block text-sm font-medium">{% trans "Type" %}</label>
+                <select id="o-type" name="type_cible" x-model="o.type_cible">
+                  {% for value, label in cibles %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                </select>
+              </div>
+              <div>
+                <label for="o-nom" class="mb-1.5 block text-sm font-medium">{% trans "Nom" %} <span style="color: var(--danger)">*</span></label>
+                <input id="o-nom" name="nom" required maxlength="255" x-model="o.nom"
+                       placeholder="{% trans 'ex : oïdium, carpocapse' %}">
+              </div>
+              <div>
+                <label for="o-intensite" class="mb-1.5 block text-sm font-medium">{% trans "Intensité" %}</label>
+                <select id="o-intensite" name="intensite" x-model="o.intensite">
+                  {% for value, label in intensites %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                </select>
+              </div>
+              <div class="sm:col-span-2">
+                <label for="o-notes" class="mb-1.5 block text-sm font-medium">{% trans "Notes" %}</label>
+                <textarea id="o-notes" name="notes" rows="4" x-model="o.notes"
+                          placeholder="{% trans 'Localisation dans la parcelle, stade, météo…' %}"></textarea>
+              </div>
+            </div>
+          </div>
+        </form>
+      {% else %}
+        <div class="px-5 py-8">
+          <div class="hs-panel px-6 py-10 text-center">
+            <p class="hs-panel-title">{% trans "Aucune parcelle" %}</p>
+            <p class="mx-auto mt-1 max-w-xl text-[13px]" style="color: var(--text-secondary)">
+              {% trans "Ajoutez d'abord une parcelle (Mes Parcelles) pour noter une observation." %}
+            </p>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Confirmation de suppression ── #}
+  <div x-show="suppr.open" x-cloak x-transition.opacity @keydown.escape.window="suppr.open = false"
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)">
+    <div @click.self="suppr.open = false" class="hs-popover w-full max-w-sm p-5">
+      <h3 class="text-[15px] font-medium">{% trans "Supprimer cette ligne ?" %}</h3>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        <span class="font-medium" style="color: var(--text)" x-text="suppr.nom"></span> — {% trans "cette action est irréversible." %}
+      </p>
+      <form method="post" :action="suppr.action" class="mt-5 flex justify-end gap-2">
+        {% csrf_token %}
+        <button type="button" @click="suppr.open = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+        <button type="submit" class="hs-btn-primary" style="background: var(--danger)">{% trans "Supprimer" %}</button>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}

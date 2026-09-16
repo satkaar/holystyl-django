@@ -1,0 +1,115 @@
+{% load i18n %}{% comment %}
+  Champ « intitulé du poste » avec la banque des postes en liste déroulante.
+
+  Une liste à nous plutôt qu'un <datalist> : celui-ci est dessiné par le
+  navigateur, parfois loin du champ, et ne se met pas en forme. Celle-ci
+  s'accroche sous le champ, filtre à la frappe (accents ignorés), se mène au
+  clavier (↑ ↓ Entrée Échap) et suit le motif ARIA « combobox ». On peut
+  toujours écrire un intitulé absent de la banque.
+
+  Choisir un poste émet `poste-choisi` (le poste en `detail`) : à la page de
+  reprendre ce qui l'intéresse — qualification, missions, profil.
+
+  Paramètres : champ_id, champ_nom, valeur, modele (expression x-model,
+  facultative), requis. Attend `banque_postes` dans le contexte. Une seule
+  fois par page : les données portent un id fixe.
+{% endcomment %}
+{{ banque_postes|json_script:"banque-postes-data" }}
+<script>
+  /* Défini avant qu'Alpine ne démarre : ce script est lu pendant l'analyse
+     de la page, Alpine est différé. */
+  window.hsComboPostes = window.hsComboPostes || function () {
+    const cle = s => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+    return {
+      postes: JSON.parse(document.getElementById('banque-postes-data').textContent),
+      ouvert: false,
+      actif: -1,
+      filtre: '',
+      get resultats() {
+        const q = cle(this.filtre);
+        return q ? this.postes.filter(p => cle(p.intitule).includes(q)) : this.postes;
+      },
+      /* Ouvert au clic ou à la flèche : toute la liste, le poste en cours en surbrillance. */
+      ouvrir() {
+        this.filtre = '';
+        this.ouvert = true;
+        const courant = cle(this.$refs.champ.value);
+        this.actif = this.resultats.findIndex(p => cle(p.intitule) === courant);
+        this.$nextTick(() => this.montrerActif());
+      },
+      fermer() { this.ouvert = false; this.actif = -1; },
+      basculer() { this.ouvert ? this.fermer() : this.ouvrir(); },
+      /* Seule une frappe filtre : le choix d'un poste réécrit aussi le champ. */
+      saisir(evt) {
+        if (!evt.isTrusted) return;
+        this.filtre = this.$refs.champ.value;
+        this.ouvert = true;
+        this.actif = this.resultats.length ? 0 : -1;
+      },
+      deplacer(pas) {
+        if (!this.ouvert) return this.ouvrir();
+        const n = this.resultats.length;
+        if (!n) return;
+        this.actif = (this.actif + pas + n) % n;
+        this.$nextTick(() => this.montrerActif());
+      },
+      montrerActif() {
+        const option = this.$refs.liste.querySelector('.is-actif');
+        if (option) option.scrollIntoView({ block: 'nearest' });
+      },
+      /* Entrée choisit l'option en surbrillance ; sans liste, elle soumet. */
+      valider(evt) {
+        if (!this.ouvert || this.actif < 0) return;
+        evt.preventDefault();
+        this.choisir(this.resultats[this.actif]);
+      },
+      choisir(poste) {
+        const champ = this.$refs.champ;
+        champ.value = poste.intitule;
+        champ.dispatchEvent(new Event('input', { bubbles: true }));  // x-model
+        this.fermer();
+        champ.dispatchEvent(new CustomEvent('poste-choisi', { bubbles: true, detail: poste }));
+      },
+    };
+  };
+</script>
+{% trans "Votre banque" as libelle_banque %}{% trans "Postes courants" as libelle_courants %}
+<div class="hs-combo" x-data="hsComboPostes()" @click.outside="fermer()"
+     @focusout="if (!$el.contains($event.relatedTarget)) fermer()">
+  <input id="{{ champ_id }}" name="{{ champ_nom }}" x-ref="champ" value="{{ valeur|default:'' }}"
+         {% if modele %}x-model="{{ modele }}"{% endif %}{% if requis %} required{% endif %}
+         maxlength="255" autocomplete="off" placeholder="{% trans 'Choisir dans la banque ou écrire' %}"
+         role="combobox" aria-autocomplete="list" aria-controls="{{ champ_id }}-liste"
+         :aria-expanded="ouvert.toString()"
+         :aria-activedescendant="ouvert && actif >= 0 ? '{{ champ_id }}-option-' + actif : null"
+         @input="saisir($event)" @click="basculer()"
+         @keydown.arrow-down.prevent="deplacer(1)" @keydown.arrow-up.prevent="deplacer(-1)"
+         @keydown.enter="valider($event)" @keydown.tab="fermer()"
+         @keydown.escape="if (ouvert) { $event.stopPropagation(); fermer(); }">
+  <button type="button" class="hs-combo-bouton" tabindex="-1" aria-label="{% trans 'Afficher la banque des postes' %}"
+          @mousedown.prevent @click="basculer(); $refs.champ.focus()">
+    <span class="material-icons-round text-[20px]" x-text="ouvert ? 'expand_less' : 'expand_more'">expand_more</span>
+  </button>
+
+  <ul id="{{ champ_id }}-liste" x-ref="liste" role="listbox" class="hs-combo-liste" x-show="ouvert" x-cloak
+      aria-label="{% trans 'Banque des postes' %}">
+    <template x-for="(p, i) in resultats" :key="p.source + p.intitule">
+      <li role="none">
+        <div class="hs-combo-groupe" aria-hidden="true" x-show="i === 0 || resultats[i - 1].source !== p.source"
+             x-text="p.source === 'banque' ? '{{ libelle_banque|escapejs }}' : '{{ libelle_courants|escapejs }}'"></div>
+        <div role="option" :id="'{{ champ_id }}-option-' + i" :aria-selected="(i === actif).toString()"
+             class="hs-combo-option" :class="{ 'is-actif': i === actif }"
+             @mousedown.prevent="choisir(p)" @mousemove="actif = i">
+          <span class="min-w-0 flex-1">
+            <span class="hs-combo-titre block" x-text="p.intitule"></span>
+            <span class="hs-combo-detail block" x-show="p.qualification || p.missions"
+                  x-text="p.qualification || p.missions"></span>
+          </span>
+        </div>
+      </li>
+    </template>
+    <li role="none" class="hs-combo-vide" x-show="!resultats.length">
+      {% trans "Aucun poste de la banque ne correspond : l'intitulé saisi sera gardé tel quel." %}
+    </li>
+  </ul>
+</div>

@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+{% load i18n l10n %}
+{% comment %}
+  L'empreinte carbone d'une campagne. Trois postes se calculent seuls
+  (électricité d'irrigation, carburant sorti du stock, azote minéral) ; les
+  autres se saisissent, chacun avec son facteur d'émission et la source de ce
+  facteur. Un chiffre sans source ne se défend pas devant un acheteur.
+{% endcomment %}
+
+{% block content %}
+{{ catalogue|json_script:"facteurs-data" }}
+<section class="hs-contraste space-y-5 pb-6"
+         x-data="{
+           modal: false,
+           editing: false,
+           action: '{% url 'environnement:poste_carbone_create' %}',
+           facteurs: JSON.parse(document.getElementById('facteurs-data').textContent),
+           choix: '',
+           form: { poste: 'carburant', libelle: '', quantite: '', unite: '', facteur: '', source: '', notes: '' },
+           suppr: { open: false, action: '', nom: '' },
+           get emissions() {
+             const e = (parseFloat(this.form.quantite) || 0) * (parseFloat(this.form.facteur) || 0);
+             return Math.round(e * 10) / 10;
+           },
+           /* Un facteur du catalogue apporte son unité et sa source ; ce qui
+              est déjà saisi n'est pas écrasé. */
+           reprendreFacteur() {
+             const f = this.facteurs.find(f => f.cle === this.choix);
+             if (!f) return;
+             if (!this.form.libelle.trim()) this.form.libelle = f.libelle;
+             this.form.unite = f.unite;
+             this.form.source = f.source;
+             if (f.valeur !== null) this.form.facteur = f.valeur;
+           },
+           ouvrirAjout() {
+             this.editing = false;
+             this.action = '{% url 'environnement:poste_carbone_create' %}';
+             this.choix = '';
+             this.form = { poste: 'carburant', libelle: '', quantite: '', unite: '', facteur: '', source: '', notes: '' };
+             this.modal = true;
+           },
+           ouvrirEdition(d) {
+             this.editing = true;
+             this.action = d.action;
+             this.choix = '';
+             this.form = { poste: d.poste, libelle: d.libelle, quantite: d.quantite, unite: d.unite, facteur: d.facteur, source: d.source, notes: d.notes };
+             this.modal = true;
+           },
+         }">
+
+  <p class="hs-crumb">{% trans "Environnement" %} · {% trans "Empreinte carbone" %}</p>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-[20px]">{% trans "Empreinte carbone" %}</h1>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        {% trans "Ce que l'exploitation émet sur la campagne, poste par poste, et ce qu'elle stocke." %}
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <form method="get" class="flex items-center gap-2">
+        <label for="campagne" class="text-[13px]" style="color: var(--text-secondary)">{% trans "Campagne" %}</label>
+        <select id="campagne" name="campagne" class="w-auto" onchange="this.form.submit()">
+          {% for c in campagnes %}<option value="{{ c }}" {% if c == campagne %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </form>
+      <button type="button" @click="ouvrirAjout()" class="hs-btn-primary">
+        <span class="material-icons-round text-[18px]">add</span>{% trans "Ajouter un poste" %}
+      </button>
+    </div>
+  </div>
+
+  {# ── Ce que vaut ce bilan : dit une fois, en haut, pas en petit en bas ── #}
+  <div class="flex items-start gap-2 rounded-[10px] px-4 py-3 text-[13px]"
+       style="border: 1px solid var(--border-strong); background: var(--surface); color: var(--text)">
+    <span class="material-icons-round text-[18px]" style="color: var(--warning)">info</span>
+    <p>
+      {% trans "Cette estimation additionne vos quantités multipliées par des facteurs d'émission : elle montre d'où vient le gros du poids. Elle ne remplace pas un diagnostic certifié (CAP'2ER, Label bas carbone, GES'TIM+), seul valable pour une démarche contractuelle." %}
+    </p>
+  </div>
+
+  {# ── Chiffres de la campagne ── #}
+  <div class="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Émissions" %}</p>
+      <p class="text-[22px]">{{ bilan.emissions|floatformat:"-1" }}<span class="text-[13px]" style="color: var(--text-muted)"> kg CO₂e</span></p>
+    </div>
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Carbone stocké" %}</p>
+      <p class="text-[22px]">{{ bilan.stockage|floatformat:"-1" }}<span class="text-[13px]" style="color: var(--text-muted)"> kg CO₂e</span></p>
+    </div>
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Net" %}</p>
+      <p class="text-[22px]">{{ bilan.net|floatformat:"-1" }}<span class="text-[13px]" style="color: var(--text-muted)"> kg CO₂e</span></p>
+    </div>
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Par hectare" %}</p>
+      <p class="text-[22px]">{{ bilan.emissions_ha|default_if_none:"—" }}<span class="text-[13px]" style="color: var(--text-muted)"> kg CO₂e/ha</span></p>
+    </div>
+  </div>
+
+  <div class="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+
+    {# ── Les postes ── #}
+    <div class="hs-panel">
+      <div class="hs-panel-head">
+        <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">cloud</span></span>
+        <div class="min-w-0">
+          <p class="hs-panel-title">{% trans "Postes de la campagne" %}</p>
+          <p class="hs-panel-sub">
+            {% blocktrans count n=bilan.lignes|length %}{{ n }} poste{% plural %}{{ n }} postes{% endblocktrans %} · {{ campagne }}
+          </p>
+        </div>
+      </div>
+
+      {% if bilan.lignes %}
+        <div class="overflow-x-auto">
+          <table class="hs-table">
+            <thead>
+              <tr>
+                <th>{% trans "Poste" %}</th>
+                <th>{% trans "Libellé" %}</th>
+                <th class="num">{% trans "Quantité" %}</th>
+                <th class="num">{% trans "Facteur" %}</th>
+                <th class="num">{% trans "kg CO₂e" %}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for l in bilan.lignes %}
+                <tr>
+                  <td>
+                    {% if l.stockage %}
+                      <span class="hs-badge hs-badge-msa">{% trans "Stockage" %}</span>
+                    {% elif l.origine != "saisi" %}
+                      <span class="hs-badge hs-badge-bail">{% trans "Calculé" %}</span>
+                    {% else %}
+                      <span class="hs-badge hs-badge-neutral">{{ l.poste_libelle }}</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <span class="font-medium">{{ l.libelle }}</span>
+                    {% if l.source %}<span class="block text-[12px]" style="color: var(--text-secondary)">{{ l.source|truncatechars:90 }}</span>{% endif %}
+                  </td>
+                  <td class="num" style="color: var(--text-secondary)">{{ l.quantite|floatformat:"-1" }} {{ l.unite }}</td>
+                  <td class="num" style="color: var(--text-secondary)">
+                    {% if l.facteur %}{{ l.facteur|floatformat:"-3" }}{% else %}<span style="color: var(--danger)">{% trans "manquant" %}</span>{% endif %}
+                  </td>
+                  <td class="num font-medium">{% if l.stockage %}−{% endif %}{{ l.emissions_kg|floatformat:"-1" }}</td>
+                  <td class="num">
+                    <div class="flex items-center justify-end gap-1.5">
+                      {% if l.origine == "saisi" %}
+                        <button type="button" title="{% trans 'Modifier' %}"
+                                @click="ouvrirEdition({ action: '{% url 'environnement:poste_carbone_edit' l.id %}', poste: '{{ l.poste }}', libelle: '{{ l.libelle|escapejs }}', quantite: '{{ l.quantite|unlocalize }}', unite: '{{ l.unite|escapejs }}', facteur: '{{ l.facteur|unlocalize }}', source: '{{ l.source|escapejs }}', notes: '{{ l.notes|escapejs }}' })"
+                                class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+                          <span class="material-icons-round text-[18px]">edit</span>
+                        </button>
+                        <button type="button" title="{% trans 'Supprimer' %}"
+                                @click="suppr = { open: true, action: '{% url 'environnement:poste_carbone_delete' l.id %}', nom: '{{ l.libelle|escapejs }}' }"
+                                class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--danger)">
+                          <span class="material-icons-round text-[18px]">delete_outline</span>
+                        </button>
+                      {% elif l.url %}
+                        <a href="{% url l.url %}" title="{% trans 'Voir la source' %}"
+                           class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-secondary)">
+                          <span class="material-icons-round text-[18px]">open_in_new</span>
+                        </a>
+                      {% endif %}
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="hs-panel-body px-6 py-10 text-center">
+          <span class="hs-panel-icon mx-auto mb-3"><span class="material-icons-round text-[19px]">cloud</span></span>
+          <p class="hs-panel-title">{% trans "Rien à compter sur cette campagne" %}</p>
+          <p class="mx-auto mt-1 max-w-xl text-[13px]" style="color: var(--text-secondary)">
+            {% trans "L'électricité d'irrigation, le carburant sorti du stock et l'azote minéral se comptent tout seuls. Ajoutez les autres postes à la main." %}
+          </p>
+          <button type="button" @click="ouvrirAjout()" class="hs-btn-primary mt-4">
+            <span class="material-icons-round text-[18px]">add</span>{% trans "Ajouter un poste" %}
+          </button>
+        </div>
+      {% endif %}
+    </div>
+
+    <aside class="space-y-5">
+      {% if bilan.sans_facteur %}
+        <div class="hs-panel">
+          <div class="hs-panel-head">
+            <span class="hs-panel-icon" style="background: var(--danger)"><span class="material-icons-round text-[19px]">error_outline</span></span>
+            <div>
+              <p class="hs-panel-title">{% trans "Postes sans facteur" %}</p>
+              <p class="hs-panel-sub">{% trans "Ils ne pèsent rien dans le total." %}</p>
+            </div>
+          </div>
+          <ul class="hs-panel-body space-y-1.5 text-[13.5px]" style="color: var(--text)">
+            {% for l in bilan.sans_facteur %}<li>{{ l.libelle }}</li>{% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+
+      <div class="hs-panel">
+        <div class="hs-panel-head">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">pie_chart</span></span>
+          <div>
+            <p class="hs-panel-title">{% trans "D'où vient le poids" %}</p>
+            <p class="hs-panel-sub">{% trans "Part de chaque poste dans les émissions." %}</p>
+          </div>
+        </div>
+        <div class="hs-panel-body space-y-3">
+          {% for p in bilan.par_poste %}
+            <div>
+              <div class="flex items-baseline justify-between gap-3 text-[13.5px]">
+                <span class="min-w-0 truncate" style="color: var(--text)">{{ p.libelle }}</span>
+                <span class="shrink-0 tabular-nums" style="color: var(--text-secondary)">{{ p.emissions_kg|floatformat:"-1" }} kg · {{ p.pct }} %</span>
+              </div>
+              <div class="mt-1 h-2 overflow-hidden rounded-full" style="background: var(--surface-alt); border: 1px solid var(--border-strong)">
+                <div class="h-full rounded-full" style="width: {{ p.pct }}%; background: var(--action)"></div>
+              </div>
+            </div>
+          {% empty %}
+            <p class="text-[13px]" style="color: var(--text-secondary)">{% trans "Aucune émission comptée." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <div class="hs-panel">
+        <div class="hs-panel-head">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">calculate</span></span>
+          <div>
+            <p class="hs-panel-title">{% trans "Ce qui se compte seul" %}</p>
+            <p class="hs-panel-sub">{% trans "Repris d'ailleurs, à ne pas ressaisir." %}</p>
+          </div>
+        </div>
+        <ul class="hs-panel-body space-y-2 text-[13.5px]" style="color: var(--text)">
+          <li class="flex items-start gap-2">
+            <span class="material-icons-round text-[17px]" style="color: var(--text-secondary)">bolt</span>
+            <span>{% trans "Électricité, depuis les relevés d'irrigation." %}</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="material-icons-round text-[17px]" style="color: var(--text-secondary)">local_gas_station</span>
+            <span>{% trans "Carburant, depuis les sorties de stock en litres." %}</span>
+          </li>
+          <li class="flex items-start gap-2">
+            <span class="material-icons-round text-[17px]" style="color: var(--text-secondary)">science</span>
+            <span>{% trans "Azote minéral, depuis le bilan azoté." %}</span>
+          </li>
+        </ul>
+      </div>
+    </aside>
+  </div>
+
+  {% comment %}Saisie en plein écran. `margin: 0` : la liste espace ses
+  enfants, et cette marge décalerait la fenêtre. Le fond est porté par
+  l'intérieur, pour que la navigation reste visible sous son voile.
+  {% endcomment %}
+  <div x-show="modal" x-cloak x-transition.opacity @keydown.escape.window="modal = false"
+       class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)"
+       role="dialog" aria-modal="true" aria-labelledby="poste-carbone-titre">
+    <div class="min-h-screen" style="background: var(--page)">
+
+      <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+           style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+        <div class="flex min-w-0 items-center gap-3">
+          <button type="button" @click="modal = false" title="{% trans 'Fermer' %}"
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+            <span class="material-icons-round text-[22px]">arrow_back</span>
+          </button>
+          <div class="min-w-0">
+            <h2 id="poste-carbone-titre" class="truncate text-[20px]"
+                x-text="editing ? '{% trans "Modifier le poste" %}' : '{% trans "Nouveau poste" %}'">{% trans "Nouveau poste" %}</h2>
+            <p class="hs-panel-sub">{% blocktrans %}Campagne {{ campagne }}{% endblocktrans %}</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" @click="modal = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+          <button type="submit" form="poste-carbone-form" class="hs-btn-primary">
+            <span class="material-icons-round text-[18px]">save</span>{% trans "Enregistrer" %}
+          </button>
+        </div>
+      </div>
+
+      <form id="poste-carbone-form" method="post" :action="action" class="px-5 py-5 pb-8">
+        {% csrf_token %}
+        <input type="hidden" name="campagne" value="{{ campagne }}">
+        <div class="grid items-start gap-5 xl:grid-cols-2">
+
+          <div class="space-y-5">
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">category</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Quel poste" %}</p>
+                  <p class="hs-panel-sub">{% trans "Le stockage de carbone se retranche des émissions." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body space-y-4">
+                <div>
+                  <label for="poste-type" class="mb-1.5 block text-sm font-medium">{% trans "Poste" %}</label>
+                  <select id="poste-type" name="poste" x-model="form.poste">
+                    {% for value, label in postes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div>
+                  <label for="poste-libelle" class="mb-1.5 block text-sm font-medium">{% trans "Libellé" %} <span style="color: var(--danger)">*</span></label>
+                  <input id="poste-libelle" name="libelle" required maxlength="255" x-model="form.libelle"
+                         placeholder="{% trans 'ex : vaches laitières, aliment acheté, haies' %}">
+                </div>
+                <div>
+                  <label for="poste-notes" class="mb-1.5 block text-sm font-medium">{% trans "Notes" %}</label>
+                  <textarea id="poste-notes" name="notes" rows="4" x-model="form.notes"
+                            placeholder="{% trans 'Périmètre retenu, hypothèses, date du diagnostic…' %}"></textarea>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">calculate</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "Combien, et avec quel facteur" %}</p>
+                <p class="hs-panel-sub">{% trans "La quantité multipliée par le facteur donne les kg CO₂e." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body space-y-4">
+              <div>
+                <label for="poste-catalogue" class="mb-1.5 block text-sm font-medium">{% trans "Partir d'un facteur connu" %}</label>
+                <select id="poste-catalogue" x-model="choix" @change="reprendreFacteur()">
+                  <option value="">{% trans "Saisir moi-même" %}</option>
+                  {% for f in catalogue %}<option value="{{ f.cle }}">{{ f.libelle }}{% if f.valeur %} — {{ f.valeur|unlocalize }} kg CO₂e/{{ f.unite }}{% endif %}</option>{% endfor %}
+                </select>
+                <p class="mt-1 text-xs" style="color: var(--text-secondary)">
+                  {% trans "Ces valeurs sont des ordres de grandeur, modifiables. Les postes sans valeur attendent celle de votre diagnostic." %}
+                </p>
+              </div>
+
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label for="poste-quantite" class="mb-1.5 block text-sm font-medium">{% trans "Quantité" %}</label>
+                  <input id="poste-quantite" name="quantite" type="number" step="0.01" inputmode="decimal" x-model="form.quantite" placeholder="0">
+                </div>
+                <div>
+                  <label for="poste-unite" class="mb-1.5 block text-sm font-medium">{% trans "Unité" %}</label>
+                  <input id="poste-unite" name="unite" maxlength="30" x-model="form.unite" placeholder="{% trans 'L, kWh, kg N, tête…' %}">
+                </div>
+              </div>
+
+              <div>
+                <label for="poste-facteur" class="mb-1.5 block text-sm font-medium">{% trans "Facteur d'émission (kg CO₂e par unité)" %}</label>
+                <input id="poste-facteur" name="facteur" type="number" step="0.001" inputmode="decimal" x-model="form.facteur" placeholder="0">
+              </div>
+              <div>
+                <label for="poste-source" class="mb-1.5 block text-sm font-medium">{% trans "Source du facteur" %}</label>
+                <input id="poste-source" name="source_facteur" maxlength="255" x-model="form.source"
+                       placeholder="{% trans 'ex : diagnostic CAP2ER 2026, Base Empreinte ADEME' %}">
+                <p class="mt-1 text-xs" style="color: var(--text-secondary)">{% trans "Un chiffre sans source ne se défend pas devant un acheteur ou un contrôleur." %}</p>
+              </div>
+
+              <div class="flex items-baseline justify-between rounded-[10px] px-4 py-3"
+                   style="border: 1px solid var(--border-strong); background: var(--surface-alt)">
+                <span class="text-[13px]" style="color: var(--text-secondary)">
+                  <span x-show="form.poste !== 'stockage'">{% trans "Émissions" %}</span>
+                  <span x-show="form.poste === 'stockage'" x-cloak>{% trans "Carbone stocké" %}</span>
+                </span>
+                <span class="text-[22px] font-medium tabular-nums" style="color: var(--action-text)">
+                  <span x-text="emissions"></span> <span class="text-[13px]">{% trans "kg CO₂e" %}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ── Confirmation de suppression ── #}
+  <div x-show="suppr.open" x-cloak x-transition.opacity @keydown.escape.window="suppr.open = false"
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)">
+    <div @click.self="suppr.open = false" class="hs-popover w-full max-w-sm p-5">
+      <h3 class="text-[15px] font-medium">{% trans "Supprimer ce poste ?" %}</h3>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        <span class="font-medium" style="color: var(--text)" x-text="suppr.nom"></span> — {% trans "cette action est irréversible." %}
+      </p>
+      <form method="post" :action="suppr.action" class="mt-5 flex justify-end gap-2">
+        {% csrf_token %}
+        <button type="button" @click="suppr.open = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+        <button type="submit" class="hs-btn-primary" style="background: var(--danger)">{% trans "Supprimer" %}</button>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}

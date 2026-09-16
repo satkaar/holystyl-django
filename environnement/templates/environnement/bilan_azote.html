@@ -1,0 +1,421 @@
+{% extends "base.html" %}
+{% load i18n l10n %}
+{% comment %}
+  Le bilan azoté d'une campagne : ce qui a été apporté, et ce qu'en dit la
+  directive Nitrates. La jauge ne compare que l'azote des effluents d'élevage
+  à la SAU — c'est ce que plafonne le texte, et rien d'autre.
+{% endcomment %}
+
+{% block content %}
+<section class="hs-contraste space-y-5 pb-6"
+         x-data="{
+           modal: false,
+           editing: false,
+           action: '{% url 'environnement:apport_azote_create' %}',
+           form: { parcelle: '', date: '{{ today }}', nature: 'mineral', produit: '', dose: '', teneur: '', surface: '', notes: '' },
+           suppr: { open: false, action: '', nom: '' },
+           get nKgHa() {
+             const n = (parseFloat(this.form.dose) || 0) * (parseFloat(this.form.teneur) || 0) / 100;
+             return Math.round(n * 100) / 100;
+           },
+           ouvrirAjout() {
+             this.editing = false;
+             this.action = '{% url 'environnement:apport_azote_create' %}';
+             this.form = { parcelle: '', date: '{{ today }}', nature: 'mineral', produit: '', dose: '', teneur: '', surface: '', notes: '' };
+             this.modal = true;
+           },
+           ouvrirEdition(d) {
+             this.editing = true;
+             this.action = d.action;
+             this.form = { parcelle: d.parcelle, date: d.date, nature: d.nature, produit: d.produit, dose: d.dose, teneur: d.teneur, surface: d.surface, notes: d.notes };
+             this.modal = true;
+           },
+         }">
+
+  <p class="hs-crumb">{% trans "Environnement" %} · {% trans "Bilan azoté" %}</p>
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h1 class="text-[20px]">{% trans "Bilan azoté" %}</h1>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        {% trans "Les apports d'azote de la campagne, et la pression sur le plafond de la directive Nitrates." %}
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <form method="get" class="flex items-center gap-2">
+        <label for="campagne" class="text-[13px]" style="color: var(--text-secondary)">{% trans "Campagne" %}</label>
+        <select id="campagne" name="campagne" class="w-auto" onchange="this.form.submit()">
+          {% for c in campagnes %}<option value="{{ c }}" {% if c == campagne %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </form>
+      <a href="{% url 'environnement:cahier_epandage' %}?campagne={{ campagne }}" target="_blank" rel="noopener" class="hs-btn-outline">
+        <span class="material-icons-round text-[18px]">picture_as_pdf</span>{% trans "Cahier d'épandage" %}
+      </a>
+      <button type="button" @click="ouvrirAjout()" class="hs-btn-primary">
+        <span class="material-icons-round text-[18px]">add</span>{% trans "Enregistrer un apport" %}
+      </button>
+    </div>
+  </div>
+
+  {# ── Chiffres de la campagne ── #}
+  <div class="grid grid-cols-2 gap-[10px] sm:grid-cols-4">
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Azote apporté" %}</p>
+      <p class="text-[22px]">{{ bilan.n_total|floatformat:"-1" }}<span class="text-[13px]" style="color: var(--text-muted)"> kg N</span></p>
+    </div>
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Dont effluents d'élevage" %}</p>
+      <p class="text-[22px]">{{ bilan.n_effluents|floatformat:"-1" }}<span class="text-[13px]" style="color: var(--text-muted)"> kg N</span></p>
+    </div>
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Moyenne sur la SAU" %}</p>
+      <p class="text-[22px]">{{ bilan.n_total_ha|default_if_none:"—" }}<span class="text-[13px]" style="color: var(--text-muted)"> kg N/ha</span></p>
+    </div>
+    <div class="hs-tile">
+      <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "SAU" %}</p>
+      <p class="text-[22px]">{{ bilan.sau|floatformat:"-2" }}<span class="text-[13px]" style="color: var(--text-muted)"> ha</span></p>
+    </div>
+  </div>
+
+  <div class="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+
+    {# ── Le relevé ── #}
+    <div class="hs-panel">
+      <div class="hs-panel-head justify-between">
+        <div class="flex min-w-0 items-center gap-3">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">science</span></span>
+          <div class="min-w-0">
+            <p class="hs-panel-title">{% trans "Apports de la campagne" %}</p>
+            <p class="hs-panel-sub">
+              {% blocktrans count n=bilan.lignes|length %}{{ n }} apport enregistré{% plural %}{{ n }} apports enregistrés{% endblocktrans %}
+              · {{ campagne }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {% if bilan.lignes %}
+        <div class="overflow-x-auto">
+          <table class="hs-table">
+            <thead>
+              <tr>
+                <th>{% trans "Date" %}</th>
+                <th>{% trans "Parcelle" %}</th>
+                <th>{% trans "Nature" %}</th>
+                <th>{% trans "Produit" %}</th>
+                <th class="num">{% trans "Dose" %}</th>
+                <th class="num">{% trans "N (kg/ha)" %}</th>
+                <th class="num">{% trans "Surface" %}</th>
+                <th class="num">{% trans "N total" %}</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for l in bilan.lignes %}
+                <tr>
+                  <td>{{ l.date|date:"d/m/Y" }}</td>
+                  <td class="font-medium">{{ l.parcelle.name }}</td>
+                  <td>
+                    {% if l.effluent %}
+                      <span class="hs-badge hs-badge-msa">{{ l.nature_libelle }}</span>
+                    {% elif l.origine == "fertigation" %}
+                      <span class="hs-badge hs-badge-bail">{{ l.nature_libelle }}</span>
+                    {% else %}
+                      <span class="hs-badge hs-badge-neutral">{{ l.nature_libelle }}</span>
+                    {% endif %}
+                  </td>
+                  <td style="color: var(--text-secondary)">{{ l.produit|default:"—" }}</td>
+                  <td class="num" style="color: var(--text-secondary)">
+                    {% if l.dose_kg_ha %}{{ l.dose_kg_ha|floatformat:"-1" }} {% trans "kg/ha" %} · {{ l.teneur_n_pct|floatformat:"-1" }} %{% else %}—{% endif %}
+                  </td>
+                  <td class="num font-medium">{{ l.n_kg_ha|floatformat:"-2" }}</td>
+                  <td class="num" style="color: var(--text-secondary)">{{ l.surface_ha|default_if_none:"—"|floatformat:"-2" }}</td>
+                  <td class="num font-medium">{{ l.n_total|floatformat:"-1" }}</td>
+                  <td class="num">
+                    <div class="flex items-center justify-end gap-1.5">
+                      {% if l.origine == "saisi" %}
+                        <button type="button" title="{% trans 'Modifier' %}"
+                                @click="ouvrirEdition({ action: '{% url 'environnement:apport_azote_edit' l.id %}', parcelle: '{{ l.parcelle.pk }}', date: '{{ l.date|date:"Y-m-d" }}', nature: '{{ l.nature }}', produit: '{{ l.produit|escapejs }}', dose: '{{ l.dose_kg_ha|unlocalize }}', teneur: '{{ l.teneur_n_pct|unlocalize }}', surface: '{{ l.surface_ha|default_if_none:""|unlocalize }}', notes: '{{ l.notes|escapejs }}' })"
+                                class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+                          <span class="material-icons-round text-[18px]">edit</span>
+                        </button>
+                        <button type="button" title="{% trans 'Supprimer' %}"
+                                @click="suppr = { open: true, action: '{% url 'environnement:apport_azote_delete' l.id %}', nom: '{{ l.parcelle.name|escapejs }} — {{ l.date|date:"d/m/Y" }}' }"
+                                class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--danger)">
+                          <span class="material-icons-round text-[18px]">delete_outline</span>
+                        </button>
+                      {% else %}
+                        <a href="{% url 'agronomie:fertigation' %}" title="{% trans 'Modifier dans Fertigation' %}"
+                           class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-secondary)">
+                          <span class="material-icons-round text-[18px]">open_in_new</span>
+                        </a>
+                      {% endif %}
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="hs-panel-body px-6 py-10 text-center">
+          <span class="hs-panel-icon mx-auto mb-3"><span class="material-icons-round text-[19px]">science</span></span>
+          <p class="hs-panel-title">{% trans "Aucun apport sur cette campagne" %}</p>
+          <p class="mx-auto mt-1 max-w-xl text-[13px]" style="color: var(--text-secondary)">
+            {% trans "Enregistrez vos apports pour tenir le cahier d'épandage et suivre le plafond des 170 kg." %}
+          </p>
+          <button type="button" @click="ouvrirAjout()" class="hs-btn-primary mt-4">
+            <span class="material-icons-round text-[18px]">add</span>{% trans "Enregistrer un apport" %}
+          </button>
+        </div>
+      {% endif %}
+    </div>
+
+    <aside class="space-y-5">
+      {# ── Le plafond ── #}
+      <div class="hs-panel">
+        <div class="hs-panel-head">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">rule</span></span>
+          <div>
+            <p class="hs-panel-title">{% trans "Plafond des 170 kg" %}</p>
+            <p class="hs-panel-sub">{% trans "Directive Nitrates, zone vulnérable" %}</p>
+          </div>
+        </div>
+        <div class="hs-panel-body space-y-3">
+          <div class="flex items-baseline justify-between">
+            <span class="text-[26px] font-medium tabular-nums"
+                  style="color: {% if bilan.depasse %}var(--danger){% else %}var(--success){% endif %}">
+              {{ bilan.effluents_ha|default_if_none:"—" }}
+            </span>
+            <span class="text-[13px]" style="color: var(--text-secondary)">/ {{ bilan.plafond }} {% trans "kg N/ha/an" %}</span>
+          </div>
+          <div class="h-2.5 overflow-hidden rounded-full" style="background: var(--surface-alt); border: 1px solid var(--border-strong)">
+            <div class="h-full rounded-full" style="width: {{ bilan.pct_plafond }}%; background: {% if bilan.depasse %}var(--danger){% else %}var(--success){% endif %}"></div>
+          </div>
+          <p class="text-[12.5px]" style="color: var(--text-secondary)">
+            {% blocktrans with n=bilan.n_effluents sau=bilan.sau %}{{ n }} kg d'azote d'effluents d'élevage, rapportés à {{ sau }} ha de SAU.{% endblocktrans %}
+          </p>
+          {% if bilan.depasse %}
+            <p class="flex items-start gap-2 rounded-[10px] px-3 py-2 text-[13px]"
+               style="border: 1px solid var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent)">
+              <span class="material-icons-round text-[18px]">error_outline</span>
+              <span>{% trans "Le plafond est dépassé sur la campagne." %}</span>
+            </p>
+          {% endif %}
+          <p class="text-[12px]" style="color: var(--text-muted)">
+            {% trans "Le plafond ne vise que l'azote organique issu des effluents d'élevage. Les engrais minéraux relèvent, eux, de l'équilibre de la fertilisation." %}
+          </p>
+        </div>
+      </div>
+
+      {# ── Par nature ── #}
+      <div class="hs-panel">
+        <div class="hs-panel-head">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">pie_chart</span></span>
+          <div>
+            <p class="hs-panel-title">{% trans "Par nature d'apport" %}</p>
+            <p class="hs-panel-sub">{% trans "En kilos d'azote sur la campagne." %}</p>
+          </div>
+        </div>
+        <ul class="hs-panel-body space-y-2 text-[13.5px]" style="color: var(--text)">
+          <li class="flex items-center justify-between gap-3">
+            <span>{% trans "Engrais minéraux" %}</span><span class="font-medium tabular-nums">{{ bilan.n_mineral|floatformat:"-1" }}</span>
+          </li>
+          <li class="flex items-center justify-between gap-3">
+            <span>{% trans "Effluents d'élevage" %}</span><span class="font-medium tabular-nums">{{ bilan.n_effluents|floatformat:"-1" }}</span>
+          </li>
+          <li class="flex items-center justify-between gap-3">
+            <span>{% trans "Autres apports organiques" %}</span><span class="font-medium tabular-nums">{{ bilan.n_organique_autre|floatformat:"-1" }}</span>
+          </li>
+        </ul>
+      </div>
+
+      {# ── Par parcelle ── #}
+      {% if bilan.par_parcelle %}
+        <div class="hs-panel">
+          <div class="hs-panel-head">
+            <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">grid_on</span></span>
+            <div>
+              <p class="hs-panel-title">{% trans "Par parcelle" %}</p>
+              <p class="hs-panel-sub">{% trans "Azote total apporté, à l'hectare." %}</p>
+            </div>
+          </div>
+          <ul class="hs-panel-body space-y-2 text-[13.5px]" style="color: var(--text)">
+            {% for p in bilan.par_parcelle %}
+              <li class="flex items-center justify-between gap-3">
+                <span class="min-w-0 truncate">{{ p.parcelle.name }}</span>
+                <span class="shrink-0 tabular-nums">
+                  <span class="font-medium">{{ p.n_ha|default_if_none:"—" }}</span>
+                  <span style="color: var(--text-secondary)"> {% trans "kg N/ha" %}</span>
+                  {% if p.depasse %}<span class="hs-badge hs-badge-danger ml-1">{% trans "170 dépassé" %}</span>{% endif %}
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
+    </aside>
+  </div>
+
+  {% comment %}Saisie en plein écran. `margin: 0` : la liste espace ses
+  enfants, et cette marge décalerait la fenêtre. Le fond est porté par
+  l'intérieur, pour que la navigation reste visible sous son voile.
+  {% endcomment %}
+  <div x-show="modal" x-cloak x-transition.opacity @keydown.escape.window="modal = false"
+       class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)"
+       role="dialog" aria-modal="true" aria-labelledby="apport-titre">
+    <div class="min-h-screen" style="background: var(--page)">
+
+      <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+           style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+        <div class="flex min-w-0 items-center gap-3">
+          <button type="button" @click="modal = false" title="{% trans 'Fermer' %}"
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+            <span class="material-icons-round text-[22px]">arrow_back</span>
+          </button>
+          <div class="min-w-0">
+            <h2 id="apport-titre" class="truncate text-[20px]"
+                x-text="editing ? '{% trans "Modifier l\'apport" %}' : '{% trans "Nouvel apport d\'azote" %}'">{% trans "Nouvel apport d'azote" %}</h2>
+            <p class="hs-panel-sub">{% trans "Ce que le cahier d'épandage devra dire." %}</p>
+          </div>
+        </div>
+        {% if parcelles %}
+          <div class="flex items-center gap-2">
+            <button type="button" @click="modal = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+            <button type="submit" form="apport-form" class="hs-btn-primary">
+              <span class="material-icons-round text-[18px]">save</span>{% trans "Enregistrer" %}
+            </button>
+          </div>
+        {% endif %}
+      </div>
+
+      {% if parcelles %}
+        <form id="apport-form" method="post" :action="action" class="px-5 py-5 pb-8">
+          {% csrf_token %}
+          <div class="grid items-start gap-5 xl:grid-cols-2">
+
+            <div class="space-y-5">
+              <div class="hs-panel">
+                <div class="hs-panel-head">
+                  <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">place</span></span>
+                  <div>
+                    <p class="hs-panel-title">{% trans "Où et quand" %}</p>
+                    <p class="hs-panel-sub">{% trans "La campagne se déduit de la date." %}</p>
+                  </div>
+                </div>
+                <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label for="apport-parcelle" class="mb-1.5 block text-sm font-medium">{% trans "Parcelle" %} <span style="color: var(--danger)">*</span></label>
+                    <select id="apport-parcelle" name="parcelle" required x-model="form.parcelle"
+                            @change="form.surface = $event.target.selectedOptions[0]?.dataset.area || ''">
+                      <option value="">{% trans "Sélectionner" %}</option>
+                      {% for p in parcelles %}<option value="{{ p.pk }}" data-area="{{ p.area|default_if_none:''|unlocalize }}">{{ p.name }}{% if p.area %} · {{ p.area }} ha{% endif %}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label for="apport-date" class="mb-1.5 block text-sm font-medium">{% trans "Date de l'apport" %}</label>
+                    <input id="apport-date" name="date" type="date" x-model="form.date">
+                  </div>
+                  <div class="sm:col-span-2">
+                    <label for="apport-surface" class="mb-1.5 block text-sm font-medium">{% trans "Surface concernée (ha)" %}</label>
+                    <input id="apport-surface" name="surface_ha" type="number" step="0.01" min="0" inputmode="decimal" x-model="form.surface">
+                    <p class="mt-1 text-xs" style="color: var(--text-secondary)">{% trans "Reprise de la parcelle ; à corriger si l'apport n'a couvert qu'une partie." %}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="hs-panel">
+                <div class="hs-panel-head">
+                  <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">sticky_note_2</span></span>
+                  <div>
+                    <p class="hs-panel-title">{% trans "Notes" %}</p>
+                    <p class="hs-panel-sub">{% trans "Conditions d'épandage, matériel, observations." %}</p>
+                  </div>
+                </div>
+                <div class="hs-panel-body">
+                  <label for="apport-notes" class="sr-only">{% trans "Notes" %}</label>
+                  <textarea id="apport-notes" name="notes" rows="5" x-model="form.notes"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">science</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Ce qui a été apporté" %}</p>
+                  <p class="hs-panel-sub">{% trans "La dose du produit et sa teneur en azote donnent les kg N/ha." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body space-y-4">
+                <div>
+                  <label for="apport-nature" class="mb-1.5 block text-sm font-medium">{% trans "Nature de l'apport" %}</label>
+                  <select id="apport-nature" name="nature" x-model="form.nature">
+                    {% for value, label in natures %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                  </select>
+                  <p class="mt-1 text-xs" style="color: var(--text-secondary)">
+                    {% trans "Seuls les effluents d'élevage comptent dans le plafond des 170 kg." %}
+                  </p>
+                </div>
+                <div>
+                  <label for="apport-produit" class="mb-1.5 block text-sm font-medium">{% trans "Produit" %}</label>
+                  <input id="apport-produit" name="produit" maxlength="255" x-model="form.produit"
+                         placeholder="{% trans 'ex : fumier de bovins, ammonitrate 33,5' %}">
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label for="apport-dose" class="mb-1.5 block text-sm font-medium">{% trans "Dose (kg/ha de produit)" %}</label>
+                    <input id="apport-dose" name="dose_kg_ha" type="number" step="0.1" min="0" inputmode="decimal" x-model="form.dose" placeholder="0">
+                  </div>
+                  <div>
+                    <label for="apport-teneur" class="mb-1.5 block text-sm font-medium">{% trans "Teneur en azote (%)" %}</label>
+                    <input id="apport-teneur" name="teneur_n_pct" type="number" step="0.01" min="0" max="100" inputmode="decimal" x-model="form.teneur" placeholder="0">
+                  </div>
+                </div>
+
+                {# Le calcul se voit pendant la saisie, pas seulement après. #}
+                <div class="flex items-baseline justify-between rounded-[10px] px-4 py-3"
+                     style="border: 1px solid var(--border-strong); background: var(--surface-alt)">
+                  <span class="text-[13px]" style="color: var(--text-secondary)">{% trans "Azote apporté" %}</span>
+                  <span class="text-[22px] font-medium tabular-nums" style="color: var(--action-text)">
+                    <span x-text="nKgHa"></span> <span class="text-[13px]">{% trans "kg N/ha" %}</span>
+                  </span>
+                </div>
+                <p class="text-xs" style="color: var(--text-secondary)">
+                  {% trans "Si vous connaissez directement les kg N/ha, saisissez-les en dose avec une teneur de 100 %." %}
+                </p>
+              </div>
+            </div>
+          </div>
+        </form>
+      {% else %}
+        <div class="px-5 py-8">
+          <div class="hs-panel px-6 py-10 text-center">
+            <p class="hs-panel-title">{% trans "Aucune parcelle" %}</p>
+            <p class="mx-auto mt-1 max-w-xl text-[13px]" style="color: var(--text-secondary)">
+              {% trans "Ajoutez d'abord une parcelle (Mes Parcelles) pour enregistrer un apport." %}
+            </p>
+          </div>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ── Confirmation de suppression ── #}
+  <div x-show="suppr.open" x-cloak x-transition.opacity @keydown.escape.window="suppr.open = false"
+       class="fixed inset-0 z-50 flex items-center justify-center p-4 lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)">
+    <div @click.self="suppr.open = false" class="hs-popover w-full max-w-sm p-5">
+      <h3 class="text-[15px] font-medium">{% trans "Supprimer cet apport ?" %}</h3>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        <span class="font-medium" style="color: var(--text)" x-text="suppr.nom"></span> — {% trans "cette action est irréversible." %}
+      </p>
+      <form method="post" :action="suppr.action" class="mt-5 flex justify-end gap-2">
+        {% csrf_token %}
+        <button type="button" @click="suppr.open = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+        <button type="submit" class="hs-btn-primary" style="background: var(--danger)">{% trans "Supprimer" %}</button>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}

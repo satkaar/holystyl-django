@@ -1,131 +1,251 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% comment %}
+  Une page par type de relation (bailleur, comptable, avocat, CUMA…), même
+  gabarit. Les fiches se rangent en panneaux sur toute la largeur, et la
+  saisie s'ouvre en plein écran plutôt qu'en repli sous le titre.
+{% endcomment %}
 
 {% block content %}
-<section class="space-y-5" x-data="{ ajout: false }">
+<section class="hs-contraste space-y-5 pb-6" x-data="{ ajout: false }">
 
   <p class="hs-crumb">{% trans "Relations" %} · {{ libelles.titre }}</p>
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <h1 class="text-[20px]">{{ libelles.titre }}</h1>
-    <button type="button" @click="ajout = !ajout" class="hs-btn-primary">
-      <span class="material-icons-round text-[18px]" x-text="ajout ? 'close' : 'add'">add</span>
-      <span x-text="ajout ? '{% trans "Fermer" %}' : '{{ libelles.ajouter|escapejs }}'">{{ libelles.ajouter }}</span>
+    <div>
+      <h1 class="text-[20px]">{{ libelles.titre }}</h1>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        {% blocktrans count n=partenaires|length %}{{ n }} fiche enregistrée{% plural %}{{ n }} fiches enregistrées{% endblocktrans %}
+      </p>
+    </div>
+    <button type="button" @click="ajout = true" class="hs-btn-primary">
+      <span class="material-icons-round text-[18px]">add</span>{{ libelles.ajouter }}
     </button>
   </div>
 
-  {# ── Formulaire d'ajout (replié par défaut) ── #}
-  <form x-show="ajout" x-cloak x-transition method="post" action="{% url 'client:partenaire_create' %}"
-        class="hs-card p-6 sm:p-8">
-    {% csrf_token %}
-    <input type="hidden" name="type_partenaire" value="{{ type_partenaire }}">
-    <h2 class="mb-4 text-[15px] font-medium">{{ libelles.nouveau }}</h2>
-    <div class="grid grid-cols-1 gap-x-24 gap-y-6 sm:grid-cols-2">
-      <div class="sm:col-span-2">
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-nom">{% trans "Nom / raison sociale" %} <span style="color: var(--danger)">*</span></label>
-        <input id="p-nom" name="nom" required class="w-full">
-      </div>
-      <div>
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-contact">{% trans "Contact principal" %}</label>
-        <input id="p-contact" name="contact_principal" class="w-full">
-      </div>
-      <div>
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-tel">{% trans "Téléphone" %}</label>
-        <input id="p-tel" name="telephone" type="tel" class="w-full">
-      </div>
-      <div>
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-email">{% trans "Email" %}</label>
-        <input id="p-email" name="email" type="email" class="w-full">
-      </div>
-      <div>
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-web">{% trans "Site web" %}</label>
-        <input id="p-web" name="site_web" class="w-full">
-      </div>
-      <div>
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-num">{% trans "N° de voie" %}</label>
-        <input id="p-num" name="numero_voie" placeholder="{% trans 'ex: 12 bis' %}" class="w-full">
-      </div>
-      <div>
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-typevoie">{% trans "Catégorie de voie" %}</label>
-        <select id="p-typevoie" name="type_voie" class="w-full">
-          <option value="">—</option>
-          {% for code, libelle in types_voie %}<option value="{{ code }}">{{ libelle }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="sm:col-span-2">
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-voie">{% trans "Voie" %}</label>
-        <input id="p-voie" name="voie" class="w-full">
-      </div>
-      <div>
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-cp">{% trans "Code postal" %}</label>
-        <input id="p-cp" name="code_postal" class="w-full">
-      </div>
-      <div>
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-ville">{% trans "Ville" %}</label>
-        <input id="p-ville" name="ville" class="w-full">
-      </div>
-      <div>
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-siret">SIRET</label>
-        <input id="p-siret" name="siret" class="w-full">
-      </div>
-      <div class="sm:col-span-2">
-        <label class="mb-1.5 block text-[13px] font-medium" style="color: var(--text-secondary)" for="p-notes">{% trans "Notes" %}</label>
-        <textarea id="p-notes" name="notes" rows="2" class="w-full"></textarea>
-      </div>
+  {# ── Les fiches ── #}
+  {% if partenaires %}
+    <div class="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+      {% for p in partenaires %}
+        <article class="hs-panel">
+          <div class="hs-panel-head justify-between">
+            <div class="flex min-w-0 items-center gap-3">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">badge</span></span>
+              <div class="min-w-0">
+                <h2 class="hs-panel-title truncate">{{ p.nom }}</h2>
+                <p class="hs-panel-sub truncate">{{ p.contact_principal|default:libelles.titre }}</p>
+              </div>
+            </div>
+            <form method="post" action="{% url 'client:partenaire_delete' p.pk %}" class="shrink-0 leading-none"
+                  onsubmit="return confirm('{% trans "Supprimer cette fiche ?" %}')">
+              {% csrf_token %}
+              <button type="submit" class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10"
+                      style="color: var(--danger)" title="{% trans 'Supprimer' %}"
+                      aria-label="{% blocktrans with nom=p.nom %}Supprimer {{ nom }}{% endblocktrans %}">
+                <span class="material-icons-round text-[18px]">delete_outline</span>
+              </button>
+            </form>
+          </div>
+          <div class="hs-panel-body space-y-3 text-[13.5px]" style="color: var(--text)">
+            <div class="space-y-1">
+              {% if p.telephone %}
+                <p class="flex items-center gap-2">
+                  <span class="material-icons-round text-[17px]" style="color: var(--text-secondary)">call</span>
+                  <a href="tel:{{ p.telephone }}" style="color: var(--action)">{{ p.telephone }}</a>
+                </p>
+              {% endif %}
+              {% if p.email %}
+                <p class="flex items-center gap-2">
+                  <span class="material-icons-round text-[17px]" style="color: var(--text-secondary)">mail</span>
+                  <a href="mailto:{{ p.email }}" class="truncate" style="color: var(--action)">{{ p.email }}</a>
+                </p>
+              {% endif %}
+              {% if p.site_web %}
+                <p class="flex items-center gap-2">
+                  <span class="material-icons-round text-[17px]" style="color: var(--text-secondary)">language</span>
+                  <span class="truncate">{{ p.site_web }}</span>
+                </p>
+              {% endif %}
+              {% if not p.telephone and not p.email and not p.site_web %}
+                <p style="color: var(--text-secondary)">{% trans "Aucune coordonnée." %}</p>
+              {% endif %}
+            </div>
+
+            <div class="space-y-1" style="border-top: 1px solid var(--border-strong); padding-top: 0.75rem">
+              <p class="flex items-start gap-2">
+                <span class="material-icons-round text-[17px]" style="color: var(--text-secondary)">place</span>
+                <span>{{ p.adresse_complete|default:"—" }}</span>
+              </p>
+              {% if p.siret %}
+                <p class="flex items-center gap-2">
+                  <span class="material-icons-round text-[17px]" style="color: var(--text-secondary)">tag</span>
+                  <span>SIRET {{ p.siret }}</span>
+                </p>
+              {% endif %}
+            </div>
+
+            {% if p.notes %}
+              <p class="whitespace-pre-line" style="border-top: 1px solid var(--border-strong); padding-top: 0.75rem; color: var(--text-secondary)">{{ p.notes }}</p>
+            {% endif %}
+          </div>
+        </article>
+      {% endfor %}
     </div>
-    <div class="mt-6 flex items-center justify-end gap-2">
-      <button type="button" @click="ajout = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
-      <button type="submit" class="hs-btn-primary">
-        <span class="material-icons-round text-[18px]">add</span>{% trans "Ajouter" %}
+  {% else %}
+    <div class="hs-panel px-6 py-10 text-center">
+      <span class="hs-panel-icon mx-auto mb-3"><span class="material-icons-round text-[19px]">badge</span></span>
+      <p class="hs-panel-title">{{ libelles.aucun }}</p>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">{% trans "Gardez ici les coordonnées et l'adresse de vos interlocuteurs." %}</p>
+      <button type="button" @click="ajout = true" class="hs-btn-primary mt-4">
+        <span class="material-icons-round text-[18px]">add</span>{{ libelles.ajouter }}
       </button>
     </div>
-  </form>
+  {% endif %}
 
-  {# ── Une carte par partenaire ── #}
-  {% for p in partenaires %}
-    <div class="hs-card overflow-hidden">
-      <div class="flex flex-wrap items-center gap-3 px-5 py-3.5" style="border-bottom: 0.5px solid var(--border)">
-        <span class="material-icons-round text-[18px]" style="color: var(--text-muted)">badge</span>
-        <h2 class="flex-1 truncate text-[15px] font-medium">
-          {{ p.nom }}
-          {% if p.contact_principal %}<span class="text-[12px] font-normal" style="color: var(--text-secondary)">· {{ p.contact_principal }}</span>{% endif %}
-        </h2>
-        <form method="post" action="{% url 'client:partenaire_delete' p.pk %}"
-              onsubmit="return confirm('{% trans "Supprimer cette fiche ?" %}')" class="leading-none">
-          {% csrf_token %}
-          <button type="submit" class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10"
-                  style="color: var(--text-muted)" title="{% trans 'Supprimer' %}">
-            <span class="material-icons-round text-[18px]">delete_outline</span>
+  {% comment %}Saisie en plein écran : `margin: 0` parce que la liste espace
+  ses enfants, et le fond est porté par l'intérieur pour que la navigation
+  reste visible sous son voile.{% endcomment %}
+  <div x-show="ajout" x-cloak x-transition.opacity @keydown.escape.window="ajout = false"
+       class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)"
+       role="dialog" aria-modal="true" aria-labelledby="partenaire-titre">
+    <div class="min-h-screen" style="background: var(--page)">
+
+      <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+           style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+        <div class="flex min-w-0 items-center gap-3">
+          <button type="button" @click="ajout = false" title="{% trans 'Fermer' %}"
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+            <span class="material-icons-round text-[22px]">arrow_back</span>
           </button>
-        </form>
-      </div>
-      <div class="grid grid-cols-1 gap-x-24 gap-y-4 p-5 sm:grid-cols-2">
-        <div>
-          <p class="text-[12px]" style="color: var(--text-muted)">{% trans "Contact" %}</p>
-          <p class="mt-0.5 text-[13px]">
-            {% if p.telephone %}{{ p.telephone }}{% endif %}
-            {% if p.email %}{% if p.telephone %} · {% endif %}{{ p.email }}{% endif %}
-            {% if not p.telephone and not p.email %}<span style="color: var(--text-muted)">—</span>{% endif %}
-          </p>
-          {% if p.site_web %}<p class="mt-0.5 truncate text-[12px]" style="color: var(--text-secondary)">{{ p.site_web }}</p>{% endif %}
-        </div>
-        <div>
-          <p class="text-[12px]" style="color: var(--text-muted)">{% trans "Adresse" %}</p>
-          <p class="mt-0.5 text-[13px]">{{ p.adresse_complete|default:"—" }}</p>
-          {% if p.siret %}<p class="mt-0.5 text-[12px]" style="color: var(--text-secondary)">SIRET {{ p.siret }}</p>{% endif %}
-        </div>
-        {% if p.notes %}
-          <div class="sm:col-span-2">
-            <p class="text-[12px]" style="color: var(--text-muted)">{% trans "Notes" %}</p>
-            <p class="mt-0.5 text-[13px]" style="color: var(--text-secondary)">{{ p.notes }}</p>
+          <div class="min-w-0">
+            <h2 id="partenaire-titre" class="truncate text-[20px]">{{ libelles.nouveau }}</h2>
+            <p class="hs-panel-sub">{% trans "Seul le nom est obligatoire ; le reste se complète plus tard." %}</p>
           </div>
-        {% endif %}
+        </div>
+        <div class="flex items-center gap-2">
+          <button type="button" @click="ajout = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+          <button type="submit" form="partenaire-form" class="hs-btn-primary">
+            <span class="material-icons-round text-[18px]">save</span>{% trans "Ajouter" %}
+          </button>
+        </div>
       </div>
+
+      <form id="partenaire-form" method="post" action="{% url 'client:partenaire_create' %}" class="px-5 py-5 pb-8">
+        {% csrf_token %}
+        <input type="hidden" name="type_partenaire" value="{{ type_partenaire }}">
+
+        <div class="grid items-start gap-5 xl:grid-cols-2">
+          <div class="space-y-5">
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">badge</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Identité" %}</p>
+                  <p class="hs-panel-sub">{% trans "Le nom de la structure et la personne qu'on appelle." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body space-y-4">
+                <div>
+                  <label class="mb-1.5 block text-sm font-medium" for="p-nom">{% trans "Nom / raison sociale" %} <span style="color: var(--danger)">*</span></label>
+                  <input id="p-nom" name="nom" required maxlength="255">
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label class="mb-1.5 block text-sm font-medium" for="p-contact">{% trans "Contact principal" %}</label>
+                    <input id="p-contact" name="contact_principal">
+                  </div>
+                  <div>
+                    <label class="mb-1.5 block text-sm font-medium" for="p-siret">SIRET</label>
+                    <input id="p-siret" name="siret">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">call</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Coordonnées" %}</p>
+                  <p class="hs-panel-sub">{% trans "Par où le joindre." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body space-y-4">
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label class="mb-1.5 block text-sm font-medium" for="p-tel">{% trans "Téléphone" %}</label>
+                    <input id="p-tel" name="telephone" type="tel">
+                  </div>
+                  <div>
+                    <label class="mb-1.5 block text-sm font-medium" for="p-email">{% trans "Email" %}</label>
+                    <input id="p-email" name="email" type="email">
+                  </div>
+                </div>
+                <div>
+                  <label class="mb-1.5 block text-sm font-medium" for="p-web">{% trans "Site web" %}</label>
+                  <input id="p-web" name="site_web" placeholder="https://">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-5">
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">place</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Adresse" %}</p>
+                  <p class="hs-panel-sub">{% trans "Utile pour un courrier ou un rendez-vous." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body space-y-4">
+                <div class="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <label class="mb-1.5 block text-sm font-medium" for="p-num">{% trans "N° de voie" %}</label>
+                    <input id="p-num" name="numero_voie" placeholder="{% trans 'ex: 12 bis' %}">
+                  </div>
+                  <div>
+                    <label class="mb-1.5 block text-sm font-medium" for="p-typevoie">{% trans "Catégorie de voie" %}</label>
+                    <select id="p-typevoie" name="type_voie">
+                      <option value="">—</option>
+                      {% for code, libelle in types_voie %}<option value="{{ code }}">{{ libelle }}</option>{% endfor %}
+                    </select>
+                  </div>
+                  <div>
+                    <label class="mb-1.5 block text-sm font-medium" for="p-voie">{% trans "Voie" %}</label>
+                    <input id="p-voie" name="voie">
+                  </div>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label class="mb-1.5 block text-sm font-medium" for="p-cp">{% trans "Code postal" %}</label>
+                    <input id="p-cp" name="code_postal">
+                  </div>
+                  <div>
+                    <label class="mb-1.5 block text-sm font-medium" for="p-ville">{% trans "Ville" %}</label>
+                    <input id="p-ville" name="ville">
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">sticky_note_2</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Notes" %}</p>
+                  <p class="hs-panel-sub">{% trans "Ce qu'il faut se rappeler avant de le rappeler." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body">
+                <label for="p-notes" class="sr-only">{% trans "Notes" %}</label>
+                <textarea id="p-notes" name="notes" rows="6"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
     </div>
-  {% empty %}
-    <div class="hs-card p-6 text-center sm:p-8">
-      <p class="text-[15px] font-medium">{{ libelles.aucun }}</p>
-      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">{% trans "Cliquez sur « Ajouter » pour créer une fiche." %}</p>
-    </div>
-  {% endfor %}
+  </div>
 </section>
 {% endblock %}

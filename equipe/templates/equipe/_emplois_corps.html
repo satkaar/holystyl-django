@@ -18,7 +18,16 @@
 
   {% for offre in offres %}
     <a href="{% url 'equipe:emploi_detail' offre.slug %}"
-       class="hs-card block p-5 transition hover:brightness-[0.98] sm:p-6">
+       class="hs-card flex gap-4 p-5 transition hover:brightness-[0.98] sm:p-6">
+      {# La ferme en vignette ; sans photo, son initiale — jamais un cadre vide. #}
+      {% if offre.exploitation.photo %}
+        <img src="{{ offre.exploitation.photo.url }}" alt="" loading="lazy"
+             class="hidden h-24 w-32 shrink-0 rounded-[10px] object-cover sm:block">
+      {% else %}
+        <span class="hidden h-24 w-32 shrink-0 place-items-center rounded-[10px] text-[28px] font-medium sm:grid" aria-hidden="true"
+              style="background: var(--surface-alt); color: var(--text-secondary)">{{ offre.exploitation.name|slice:":1"|upper }}</span>
+      {% endif %}
+      <span class="block min-w-0 flex-1">
       <div class="flex flex-wrap items-start justify-between gap-2">
         <span class="min-w-0">
           <span class="block text-[17px] font-medium">{{ offre.titre }}</span>
@@ -34,6 +43,7 @@
         {% if offre.duree_hebdo %} · {{ offre.duree_hebdo|floatformat:"-1" }} h/{% trans "semaine" %}{% endif %}
         {% if offre.logement %} · {% trans "logement possible" %}{% endif %}
       </p>
+      </span>
     </a>
   {% empty %}
     <div class="hs-card p-8 text-center">

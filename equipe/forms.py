@@ -1,8 +1,9 @@
-"""Formulaires équipe : membre, tâche, création de compte sur invitation."""
+"""Formulaires équipe : membre (ajout et fiche salarié), tâche, compte sur invitation."""
 
 from django import forms
 from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from .models import Task, TeamMember
@@ -57,6 +58,99 @@ class TeamMemberForm(forms.ModelForm):
         if commit:
             member.save()
         return member
+
+
+def _date():
+    return forms.DateInput(attrs={"type": "date"}, format="%Y-%m-%d")
+
+
+class TeamMemberEditForm(TeamMemberForm):
+    """Édite un membre, y compris ce que son contrat de travail demandera.
+
+    L'ajout reste court — un nom, un email, un rôle — ; c'est à l'édition que
+    l'on complète l'état civil, l'adresse et le poste, qui rempliront ensuite
+    les blancs du contrat.
+    """
+
+    #: Déclaré ici plutôt que déduit du modèle : on le saisit volontiers par
+    #: groupes, « 1 85 05… », et ses 15 caractères ne se comptent qu'une fois
+    #: les espaces retirés.
+    numero_securite_sociale = forms.CharField(
+        label=_("N° de sécurité sociale"), max_length=25, required=False,
+        help_text=_("15 chiffres, clé comprise."),
+        widget=forms.TextInput(attrs={
+            "placeholder": "1 85 05 33 063 042 26", "inputmode": "numeric", "autocomplete": "off"}),
+    )
+
+    class Meta(TeamMemberForm.Meta):
+        fields = TeamMemberForm.Meta.fields + [
+            "civilite", "nom_naissance", "date_naissance", "lieu_naissance", "nationalite",
+            "numero_securite_sociale", "adresse", "code_postal", "ville",
+            "titre_sejour_numero", "titre_sejour_expire_le", "poste", "qualification",
+        ]
+        widgets = {
+            **TeamMemberForm.Meta.widgets,
+            "date_naissance": _date(),
+            "titre_sejour_expire_le": _date(),
+            "lieu_naissance": forms.TextInput(attrs={"placeholder": _("Ex. Bordeaux (33)")}),
+            "nationalite": forms.TextInput(attrs={"placeholder": _("Ex. française")}),
+            "adresse": forms.TextInput(attrs={"placeholder": _("Ex. 12 chemin des Vignes")}),
+            "qualification": forms.TextInput(attrs={"placeholder": _("Ex. palier 3, coefficient 150")}),
+        }
+        labels = {
+            **TeamMemberForm.Meta.labels,
+            "civilite": _("Civilité"),
+            "nom_naissance": _("Nom de naissance"),
+            "date_naissance": _("Date de naissance"),
+            "lieu_naissance": _("Lieu de naissance"),
+            "nationalite": _("Nationalité"),
+            "adresse": _("Adresse"),
+            "code_postal": _("Code postal"),
+            "ville": _("Ville"),
+            "titre_sejour_numero": _("N° du titre de séjour"),
+            "titre_sejour_expire_le": _("Valable jusqu'au"),
+            "poste": _("Intitulé du poste"),
+            "qualification": _("Qualification"),
+        }
+        help_texts = {
+            "nom_naissance": _("Seulement s'il diffère du nom d'usage."),
+            "poste": _("Choisi dans la banque, il reprend sa qualification. "
+                       "Laissé vide, le contrat reprend le rôle."),
+            "qualification": _("Niveau, échelon ou coefficient de la convention collective."),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for champ in ("date_naissance", "titre_sejour_expire_le"):
+            self.fields[champ].input_formats = ["%Y-%m-%d"]
+        self.fields["civilite"].choices = [("", "—"), *TeamMember.Civilite.choices]
+
+    def clean_numero_securite_sociale(self):
+        """Le NIR sans espaces, et seulement si sa clé tombe juste.
+
+        Treize caractères puis une clé de deux chiffres : 97 moins le reste de
+        la division par 97. La Corse écrit son département 2A ou 2B, que le
+        calcul lit 19 et 18. Une faute de frappe se voit ici plutôt que sur la
+        DPAE, où elle ferait rejeter la déclaration.
+        """
+        nir = "".join(self.cleaned_data.get("numero_securite_sociale", "").split()).upper()
+        nir = nir.replace(".", "").replace("-", "")
+        if not nir:
+            return ""
+        corps, cle = nir[:13], nir[13:]
+        numerique = corps[:5] + corps[5:7].replace("2A", "19").replace("2B", "18") + corps[7:]
+        if len(nir) != 15 or not (numerique.isdigit() and cle.isdigit()):
+            raise forms.ValidationError(_("Un n° de sécurité sociale compte 15 chiffres, clé comprise."))
+        if 97 - int(numerique) % 97 != int(cle):
+            raise forms.ValidationError(_("La clé ne correspond pas : vérifiez le numéro."))
+        return nir
+
+    def clean(self):
+        donnees = super().clean()
+        naissance = donnees.get("date_naissance")
+        if naissance and naissance >= timezone.localdate():
+            self.add_error("date_naissance", _("La date de naissance doit être passée."))
+        return donnees
 
 
 class TaskForm(forms.ModelForm):

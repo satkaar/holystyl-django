@@ -26,3 +26,9 @@ node_modules/
 .DS_Store
 .idea/
 .vscode/
+
+# Exports du Drive catalogue : volumineux et régénérables, le Drive fait foi
+catalogue/donnees/*.xlsx
+
+# Fiches techniques du Drive : rapatriées par la synchro, le Drive fait foi
+catalogue/donnees/fiches/

@@ -1,6 +1,7 @@
 """Tests équipe : API tâches/membres, SMS d'affectation, rappels Celery, lien géoloc."""
 
 import html
+import json
 import sys
 from datetime import timedelta
 
@@ -1047,3 +1048,246 @@ def test_la_signature_du_voisin_ne_s_appose_pas(client, ferme_rh):
         "membre": str(membre.pk), "modele": str(modele.pk), "signature": str(la_sienne.pk)})
 
     assert ContratTravail.objects.get(membre=membre).signature is None
+
+
+def _fiche_membre(membre, **surcharges):
+    donnees = {"first_name": "Paul", "last_name": "Martin", "email": membre.email,
+               "phone": membre.phone, "role": "ouvrier"}
+    donnees.update(surcharges)
+    return donnees
+
+
+@pytest.mark.django_db
+def test_la_fiche_du_membre_porte_ce_que_le_contrat_demande(client, ferme_rh):
+    patron, _exploitation, membre = ferme_rh
+    client.force_login(patron)
+
+    reponse = client.post(f"/equipe/{membre.pk}/modifier/", _fiche_membre(
+        membre, civilite="m", date_naissance="1985-05-12", lieu_naissance="Bordeaux (33)",
+        nationalite="française", numero_securite_sociale="1 85 05 33 063 042 26",
+        adresse="12 chemin des Vignes", code_postal="33000", ville="Bordeaux",
+        poste="Tractoriste", qualification="Palier 3"))
+
+    assert reponse.status_code == 302
+    membre.refresh_from_db()
+    assert membre.date_naissance.isoformat() == "1985-05-12"
+    # Le numéro s'enregistre sans ses espaces.
+    assert membre.numero_securite_sociale == "185053306304226"
+    assert membre.adresse_complete == "12 chemin des Vignes 33000 Bordeaux"
+    assert membre.intitule_poste == "Tractoriste"
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("nir", ["185053306304227", "18505330630", "1850533O6304226"])
+def test_un_numero_de_securite_sociale_faux_est_refuse(client, ferme_rh, nir):
+    patron, _exploitation, membre = ferme_rh
+    client.force_login(patron)
+
+    reponse = client.post(f"/equipe/{membre.pk}/modifier/",
+                          _fiche_membre(membre, numero_securite_sociale=nir))
+
+    assert reponse.status_code == 200
+    assert "numero_securite_sociale" in reponse.context["form"].errors
+    membre.refresh_from_db()
+    assert membre.numero_securite_sociale == ""
+
+
+def test_un_numero_corse_se_verifie_avec_son_departement_en_lettres():
+    from equipe.forms import TeamMemberEditForm
+
+    form = TeamMemberEditForm(data={"first_name": "A", "last_name": "B", "email": "a@b.fr",
+                                    "role": "ouvrier", "numero_securite_sociale": "185052A06304216"})
+    assert form.is_valid(), form.errors
+
+
+@pytest.mark.django_db
+def test_le_contrat_reprend_l_etat_civil_de_la_fiche(client, ferme_rh):
+    """Choisir le salarié suffit : son état civil remplit les blancs."""
+    import datetime
+
+    from equipe.models import ContratTravail, ModeleContrat
+
+    patron, exploitation, membre = ferme_rh
+    TeamMember.objects.filter(pk=membre.pk).update(
+        civilite="m", date_naissance=datetime.date(1985, 5, 12), lieu_naissance="Bordeaux",
+        nationalite="française", numero_securite_sociale="185053306304226",
+        adresse="12 chemin des Vignes", code_postal="33000", ville="Bordeaux",
+        poste="Tractoriste", qualification="Palier 3")
+    modele = ModeleContrat.objects.create(
+        exploitation=exploitation, nom="CDI maison", type_contrat="cdi",
+        corps="{{ salarie_civilite }} {{ salarie }}, né le {{ salarie_date_naissance }} à "
+              "{{ salarie_lieu_naissance }}, {{ salarie_nationalite }}, demeurant "
+              "{{ salarie_adresse }}, n° {{ salarie_securite_sociale }}, "
+              "{{ poste }} ({{ qualification }}).")
+
+    client.force_login(patron)
+    client.post("/contrats-travail/etablir/", {"membre": str(membre.pk), "modele": str(modele.pk)})
+
+    corps = ContratTravail.objects.get(membre=membre).corps
+    assert corps == ("Monsieur Paul Martin, né le 12 mai 1985 à Bordeaux, française, "
+                     "demeurant 12 chemin des Vignes 33000 Bordeaux, n° 185053306304226, "
+                     "Tractoriste (Palier 3).")
+
+
+@pytest.mark.django_db
+def test_la_fiche_attend_qu_on_choisisse_le_salarie(client, ferme_rh):
+    """Les blancs de la fiche ne se remplissent pas d'avance avec le premier membre."""
+    from equipe.models import ModeleContrat
+
+    patron, exploitation, membre = ferme_rh
+    TeamMember.objects.filter(pk=membre.pk).update(qualification="Palier 3",
+                                                   lieu_naissance="Bordeaux")
+    modele = ModeleContrat.objects.create(
+        exploitation=exploitation, nom="CDI maison", type_contrat="cdi",
+        corps="Né à {{ salarie_lieu_naissance }}, qualification {{ qualification }}.")
+
+    client.force_login(patron)
+    reponse = client.get(f"/contrats-travail/modeles/{modele.pk}/etablir/")
+
+    etat = json.loads(reponse.context["etat"])
+    assert etat["valeurs"] == {"salarie_lieu_naissance": "", "qualification": ""}
+    # C'est la fiche du salarié choisi qui les apportera.
+    fiche = json.loads(reponse.context["fiches_membres"])[str(membre.pk)]
+    assert fiche["qualification"] == "Palier 3" and fiche["salarie_lieu_naissance"] == "Bordeaux"
+
+
+# ── Banque des postes ──
+
+@pytest.mark.django_db
+def test_la_banque_passe_avant_les_postes_courants(ferme_rh):
+    """Un intitulé de la ferme masque son homonyme courant, casse ignorée."""
+    from equipe import postes
+    from equipe.models import Poste
+
+    _patron, exploitation, _membre = ferme_rh
+    Poste.objects.create(exploitation=exploitation, intitule="TRACTORISTE",
+                         qualification="Palier 4")
+
+    proposes = postes.suggestions(exploitation)
+    assert proposes[0] == {"intitule": "TRACTORISTE", "qualification": "Palier 4",
+                           "missions": "", "profil": "", "source": "banque"}
+    intitules = [p["intitule"].casefold() for p in proposes]
+    assert intitules.count("tractoriste") == 1
+    assert "ouvrier viticole" in intitules  # les courants restent proposés
+
+
+@pytest.mark.django_db
+def test_importer_les_postes_courants_ne_cree_pas_de_doublon(client, ferme_rh):
+    from equipe.models import Poste
+    from equipe.postes import POSTES_COURANTS
+
+    patron, exploitation, _membre = ferme_rh
+    Poste.objects.create(exploitation=exploitation, intitule="ouvrier viticole")
+    client.force_login(patron)
+
+    client.post("/postes/importer/")
+    client.post("/postes/importer/")
+
+    assert Poste.objects.filter(exploitation=exploitation).count() == len(POSTES_COURANTS)
+    # Le poste que la ferme avait déjà n'a pas été remplacé.
+    assert Poste.objects.filter(exploitation=exploitation, intitule="ouvrier viticole").exists()
+
+
+@pytest.mark.django_db
+def test_un_poste_s_enregistre_une_seule_fois(client, ferme_rh):
+    from equipe.models import Poste
+
+    patron, exploitation, _membre = ferme_rh
+    client.force_login(patron)
+
+    client.post("/postes/enregistrer/", {"intitule": "Chef de culture", "qualification": "Palier 8",
+                                          "missions": "Organiser les cultures."})
+    reponse = client.post("/postes/enregistrer/", {"intitule": "chef de culture"}, follow=True)
+
+    assert Poste.objects.filter(exploitation=exploitation).count() == 1
+    assert "déjà dans la banque" in reponse.content.decode()
+
+    poste = Poste.objects.get(exploitation=exploitation)
+    client.post(f"/postes/{poste.pk}/enregistrer/", {"intitule": "Chef de culture",
+                                                      "qualification": "Palier 9"})
+    poste.refresh_from_db()
+    assert poste.qualification == "Palier 9" and poste.missions == ""
+
+
+@pytest.mark.django_db
+def test_le_poste_du_voisin_ne_se_touche_pas(client, ferme_rh):
+    from equipe.models import Poste
+
+    patron, _exploitation, _membre = ferme_rh
+    voisin = User.objects.create_user(email="voisin-poste@ex.com", password="pwd12345")
+    ailleurs = Exploitation.objects.create(owner=voisin, name="Ferme d'en face")
+    le_sien = Poste.objects.create(exploitation=ailleurs, intitule="Berger")
+    client.force_login(patron)
+
+    assert client.post(f"/postes/{le_sien.pk}/supprimer/").status_code == 404
+    assert client.post(f"/postes/{le_sien.pk}/enregistrer/", {"intitule": "Pirate"}).status_code == 404
+    assert "Berger" not in client.get("/postes/").content.decode()
+    le_sien.refresh_from_db()
+    assert le_sien.intitule == "Berger"
+
+
+@pytest.mark.django_db
+def test_la_banque_compte_les_fiches_et_offres_qui_portent_le_poste(client, ferme_rh):
+    from equipe.models import OffreEmploi, Poste
+
+    patron, exploitation, membre = ferme_rh
+    Poste.objects.create(exploitation=exploitation, intitule="Tractoriste")
+    TeamMember.objects.filter(pk=membre.pk).update(poste="tractoriste")
+    OffreEmploi.objects.create(exploitation=exploitation, titre="Tractoriste", description="…")
+    client.force_login(patron)
+
+    reponse = client.get("/postes/")
+    assert reponse.context["postes"][0].usages == 2
+
+
+@pytest.mark.django_db
+def test_la_banque_se_propose_la_ou_l_on_ecrit_un_intitule(client, ferme_rh):
+    from equipe.models import ModeleContrat, Poste
+
+    patron, exploitation, membre = ferme_rh
+    Poste.objects.create(exploitation=exploitation, intitule="Caviste maison",
+                         qualification="Palier 5", missions="Tenir le chai.")
+    modele = ModeleContrat.objects.create(exploitation=exploitation, nom="CDI", type_contrat="cdi",
+                                          corps="Au poste de {{ poste }}.")
+    client.force_login(patron)
+
+    # La fiche et l'offre portent la liste déroulante et, en données, la
+    # banque de la ferme suivie des postes courants.
+    for url in (f"/equipe/{membre.pk}/modifier/", "/offres-emploi/"):
+        page = client.get(url)
+        assert 'role="combobox"' in page.content.decode()
+        proposes = page.context["banque_postes"]
+        assert proposes[0]["intitule"] == "Caviste maison"
+        assert proposes[0]["missions"] == "Tenir le chai."
+        assert "Ouvrier viticole" in [p["intitule"] for p in proposes]
+
+    contrat = client.get(f"/contrats-travail/modeles/{modele.pk}/etablir/").content.decode()
+    assert '<option value="Caviste maison">' in contrat
+
+
+@pytest.mark.django_db
+def test_l_offre_publique_montre_la_photo_de_la_ferme(client, ferme_rh):
+    import io
+
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from PIL import Image
+
+    from equipe.models import OffreEmploi
+
+    _patron, exploitation, _membre = ferme_rh
+    tampon = io.BytesIO()
+    Image.new("RGB", (16, 9), (40, 120, 60)).save(tampon, format="PNG")
+    exploitation.photo = SimpleUploadedFile("ferme.png", tampon.getvalue(), content_type="image/png")
+    exploitation.save()
+    offre = OffreEmploi.objects.create(exploitation=exploitation, titre="Tractoriste", description="…",
+                                       statut="publiee", publiee_le=timezone.now())
+
+    assert exploitation.photo.url in client.get("/emplois/").content.decode()
+    assert exploitation.photo.url in client.get(f"/emplois/{offre.slug}/").content.decode()
+
+
+@pytest.mark.django_db
+def test_l_offre_n_a_plus_d_email_de_contact(client, ferme_rh):
+    patron, _exploitation, _membre = ferme_rh
+    client.force_login(patron)
+    assert 'name="contact_email"' not in client.get("/offres-emploi/").content.decode()

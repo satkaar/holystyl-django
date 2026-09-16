@@ -507,3 +507,124 @@ def test_toutes_deja_semees_ne_cree_rien(client, user_exploitation):
     assert reponse.status_code == 200  # on reste au formulaire
     assert ParcelleCampagne.objects.count() == 1
     assert ParcelleCampagne.objects.get().culture == "Vigne"
+
+
+# --- Rendements et heures sur la fiche parcelle ------------------------------------------------
+
+@pytest.fixture
+def parcelle_travaillee(user_exploitation):
+    """Une parcelle de 2 ha, deux campagnes de récolte et quelques heures de travail."""
+    from datetime import datetime, timedelta
+
+    from django.utils import timezone
+
+    from equipe.models import TeamMember
+    from finances.models import Recolte
+    from interventions.models import Intervention
+    from operations.models import AffectationEngin, Machine
+
+    user, exploitation = user_exploitation
+    parcelle = Parcelle.objects.create(exploitation=exploitation, name="Coteau", area=2.0)
+    aware = lambda *a: timezone.make_aware(datetime(*a))  # noqa: E731
+
+    # Campagne 2025/2026 (septembre → septembre) : 3 000 kg, dont 1 000 kg en extra.
+    Recolte.objects.create(exploitation=exploitation, parcelle=parcelle, date=aware(2025, 10, 5),
+                           quantite_kg=2000, qualite=Recolte.Qualite.CAT1, prix_unitaire=1.5)
+    Recolte.objects.create(exploitation=exploitation, parcelle=parcelle, date=aware(2026, 6, 20),
+                           quantite_kg=1000, qualite=Recolte.Qualite.EXTRA, prix_unitaire=2.0)
+    # Campagne précédente : 2 000 kg.
+    Recolte.objects.create(exploitation=exploitation, parcelle=parcelle, date=aware(2025, 5, 12),
+                           quantite_kg=2000, qualite=Recolte.Qualite.CAT1, prix_unitaire=1.0)
+
+    marie = TeamMember.objects.create(exploitation=exploitation, name="Marie")
+    for heures, type_, statut in ((6, "taille", "terminee"), (4, "recolte", "terminee"), (3, "recolte", "en_cours")):
+        Intervention.objects.create(exploitation=exploitation, parcelle=parcelle, assigned_to=marie,
+                                    intervention_type=type_, status=statut, start_time=aware(2026, 3, 2),
+                                    duration_hours=heures, cost=heures * 20)
+    # Annulée et sans durée : ni l'une ni l'autre ne doit gonfler le total.
+    Intervention.objects.create(exploitation=exploitation, parcelle=parcelle, intervention_type="taille",
+                                status="annulee", start_time=aware(2026, 3, 3), duration_hours=99)
+    Intervention.objects.create(exploitation=exploitation, parcelle=parcelle, intervention_type="observation",
+                                status="terminee", start_time=aware(2026, 3, 4))
+
+    tracteur = Machine.objects.create(exploitation=exploitation, name="Tracteur")
+    AffectationEngin.objects.create(exploitation=exploitation, machine=tracteur, parcelle=parcelle,
+                                    operation="labour", date_debut=aware(2026, 2, 1) + timedelta(hours=1),
+                                    heures_utilisees=5)
+    return user, parcelle
+
+
+@pytest.mark.django_db
+def test_rendements_par_campagne(parcelle_travaillee):
+    from finances.services import rendements_par_parcelle
+
+    _, parcelle = parcelle_travaillee
+    resultat = rendements_par_parcelle(parcelle)
+    courante, precedente = resultat["campagnes"][0], resultat["campagnes"][1]
+    assert courante["libelle"] == "2025/2026"
+    assert courante["kg"] == 3000
+    assert courante["rendement"] == 1500  # 3 000 kg sur 2 ha
+    assert courante["valorisation"] == 5000  # 2 000 × 1,5 + 1 000 × 2
+    assert precedente["libelle"] == "2024/2025"
+    assert resultat["variation"] == 50  # 3 000 kg contre 2 000 la campagne d'avant
+    assert {q["libelle"]: q["part"] for q in courante["qualites"]} == {"Catégorie 1": 67, "Extra": 33}
+
+
+@pytest.mark.django_db
+def test_rendement_vide_sans_surface(user_exploitation):
+    from datetime import datetime
+
+    from django.utils import timezone
+
+    from finances.models import Recolte
+    from finances.services import rendements_par_parcelle
+
+    user, exploitation = user_exploitation
+    parcelle = Parcelle.objects.create(exploitation=exploitation, name="Sans surface", area=None)
+    Recolte.objects.create(exploitation=exploitation, parcelle=parcelle,
+                           date=timezone.make_aware(datetime(2026, 5, 1)), quantite_kg=500)
+    resultat = rendements_par_parcelle(parcelle)
+    assert resultat["campagnes"][0]["kg"] == 500
+    assert resultat["campagnes"][0]["rendement"] is None  # pas de kg/ha inventé
+
+
+@pytest.mark.django_db
+def test_heures_effectuees(parcelle_travaillee):
+    from interventions.services import heures_par_parcelle
+    from operations.services import heures_engins_par_parcelle
+
+    _, parcelle = parcelle_travaillee
+    heures = heures_par_parcelle(parcelle)
+    assert heures["total"] == 13  # 6 + 4 + 3 ; l'annulée et celle sans durée sont écartées
+    assert heures["par_hectare"] == 6.5
+    assert heures["sans_duree"] == 1
+    assert heures["cout"] == 260
+    assert [t["libelle"] for t in heures["par_type"]] == ["Récolte", "Taille"]  # du plus long au plus court
+    assert heures["par_personne"][0] == {"libelle": "Marie", "heures": 13.0, "nombre": 3}
+    assert heures_engins_par_parcelle(parcelle)["total"] == 5
+
+
+@pytest.mark.django_db
+def test_fiche_parcelle_affiche_rendements_et_heures(client, parcelle_travaillee):
+    user, parcelle = parcelle_travaillee
+    client.force_login(user)
+    resp = client.get(reverse("parcelles:edit", args=[parcelle.pk]))
+    assert resp.status_code == 200
+    assert resp.context["rendements"]["courante"]["rendement"] == 1500
+    assert resp.context["heures"]["total"] == 13
+    assert resp.context["fruit"]["kg_par_heure"] == 384.6  # 5 000 kg récoltés pour 13 heures
+    contenu = resp.content.decode()
+    for attendu in ("Rendements", "Heures effectuées", "Fruit du travail", "1500", "13", "Marie"):
+        assert attendu in contenu
+
+
+@pytest.mark.django_db
+def test_fiche_parcelle_sans_donnees(client, user_exploitation):
+    user, exploitation = user_exploitation
+    parcelle = Parcelle.objects.create(exploitation=exploitation, name="Neuve", area=1)
+    client.force_login(user)
+    resp = client.get(reverse("parcelles:edit", args=[parcelle.pk]))
+    assert resp.status_code == 200
+    assert resp.context["rendements"]["campagnes"] == []
+    assert resp.context["heures"]["total"] == 0
+    assert "Aucune récolte enregistrée" in resp.content.decode()

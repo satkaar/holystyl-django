@@ -2,7 +2,7 @@
 {% load i18n %}
 
 {% block content %}
-<section class="space-y-5" x-data="{ modal: false, tab: 'tous', q: '', filtre: false }">
+<section class="hs-contraste space-y-5 pb-6" x-data="{ modal: false, tab: 'tous', q: '', filtre: false }">
 
   {# Fil d'Ariane vide : conserve l'espace en tête de page, comme sur les autres écrans. #}
   <p class="hs-crumb" aria-hidden="true">&nbsp;</p>
@@ -10,8 +10,12 @@
   <div class="flex flex-wrap items-center justify-between gap-3">
     <h1 class="text-[20px]">{% trans "Clients" %}</h1>
     <div class="flex items-center gap-2">
-      <button type="button" @click="filtre = !filtre" class="hs-btn-outline">{% trans "Filtrer" %}</button>
-      <button type="button" @click="modal = true" class="hs-btn-primary">{% trans "Nouveau client" %}</button>
+      <button type="button" @click="filtre = !filtre" class="hs-btn-outline">
+        <span class="material-icons-round text-[18px]">filter_list</span>{% trans "Filtrer" %}
+      </button>
+      <button type="button" @click="modal = true" class="hs-btn-primary">
+        <span class="material-icons-round text-[18px]">add</span>{% trans "Nouveau client" %}
+      </button>
     </div>
   </div>
 
@@ -33,7 +37,14 @@
     <div class="hs-tile"><p class="text-[12px]" style="color: var(--text-secondary)">{% trans "CA cumulé" %}</p><p class="text-[22px]">{{ kpi_ca }} €</p></div>
   </div>
 
-  <div class="hs-card overflow-hidden">
+  <div class="hs-panel">
+    <div class="hs-panel-head">
+      <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">groups</span></span>
+      <div>
+        <p class="hs-panel-title">{% trans "Vos clients" %}</p>
+        <p class="hs-panel-sub">{% trans "Cliquez sur un nom pour ouvrir sa fiche." %}</p>
+      </div>
+    </div>
     <table class="hs-table">
       <thead>
         <tr>

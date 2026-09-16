@@ -2,22 +2,27 @@
 {% load i18n %}
 
 {% block content %}
-<section class="space-y-5" x-data="{ modal: false, del: { open: false, action: '', name: '' } }">
+<section class="hs-contraste space-y-5 pb-6" x-data="{ modal: false, del: { open: false, action: '', name: '' } }">
 
   <p class="hs-crumb">{% trans "Environnement" %} · {% trans "Taxonomie" %}</p>
   <div class="flex flex-wrap items-center justify-between gap-3">
-    <h1 class="text-[20px]">{% trans "Taxonomie EU" %}</h1>
-    <div class="flex items-center gap-2">
+    <div>
+      <h1 class="text-[20px]">{% trans "Taxonomie EU" %}</h1>
+      <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
+        {% trans "Règlement (UE) 2020/852 · alignement des activités (CA / CapEx / OpEx)" %}
+      </p>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
       <form method="get" id="campagne-form">
         <select name="campagne" aria-label="{% trans 'Campagne' %}" onchange="document.getElementById('campagne-form').submit()">
           {% for a in annees %}<option value="{{ a }}" {% if a == campagne %}selected{% endif %}>{% trans "Campagne" %} {{ a }}</option>{% endfor %}
         </select>
       </form>
-      <button type="button" @click="modal = true" class="hs-btn-primary">{% trans "Ajouter une fiche" %}</button>
+      <button type="button" @click="modal = true" class="hs-btn-primary">
+        <span class="material-icons-round text-[18px]">add</span>{% trans "Ajouter une fiche" %}
+      </button>
     </div>
   </div>
-
-  <p class="text-[13px]" style="color: var(--text-secondary)">{% trans "Règlement (UE) 2020/852 · alignement des activités (CA / CapEx / OpEx)" %}</p>
 
   {# ── Indicateurs : part alignée ── #}
   <div id="sec-kpi" class="scroll-mt-6">
@@ -46,8 +51,14 @@
 
   {# ── Activités ── #}
   <div id="sec-fiches" class="scroll-mt-6 space-y-3">
-    <h2 class="text-[15px] font-medium">{% trans "Activités — Campagne" %} {{ campagne }}</h2>
-    <div class="hs-card overflow-hidden">
+    <div class="hs-panel">
+      <div class="hs-panel-head">
+        <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">fact_check</span></span>
+        <div>
+          <p class="hs-panel-title">{% trans "Activités évaluées" %}</p>
+          <p class="hs-panel-sub">{% blocktrans %}Campagne {{ campagne }}{% endblocktrans %}</p>
+        </div>
+      </div>
       <table class="hs-table">
         <thead>
           <tr>
@@ -76,7 +87,7 @@
               <td class="num">
                 <button type="button" title="{% trans 'Supprimer' %}"
                         @click="del = { open: true, action: '{% url 'environnement:taxonomie_delete' f.pk %}', name: '{{ f.libelle|escapejs }}' }"
-                        class="grid h-8 w-8 place-items-center rounded-full" style="color: var(--text-muted)"><span class="material-icons-round text-[18px]">delete_outline</span></button>
+                        class="grid h-8 w-8 place-items-center rounded-full transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--danger)"><span class="material-icons-round text-[18px]">delete_outline</span></button>
               </td>
             </tr>
           {% endfor %}
@@ -93,87 +104,136 @@
     <p class="text-[12px]" style="color: var(--text-secondary)">{% trans "Une activité est ALIGNÉE si : éligible + contribution substantielle à 1 objectif + DNSH (ne nuit pas aux 5 autres) + garanties minimales. Les KPIs montrent la part alignée du CA, des CapEx et des OpEx." %}</p>
   </div>
 
-  {# Modal : nouvelle fiche #}
+  {% comment %}Saisie en plein écran. `margin: 0` : la liste espace ses
+  enfants, et cette marge décalerait la fenêtre. Le fond est porté par
+  l'intérieur, pour que la navigation reste visible sous son voile.
+  {% endcomment %}
   <div x-show="modal" x-cloak x-transition.opacity @keydown.escape.window="modal = false"
-       class="fixed inset-0 z-40 flex items-start justify-center bg-black/40 p-4 lg:pl-[var(--nav-offset)] sm:items-center">
-    <div @click.self="modal = false" class="flex max-h-full w-full max-w-5xl items-start justify-center">
-      <div class="hs-popover w-full max-w-5xl overflow-y-auto p-5">
-        <div class="mb-4 flex items-center justify-between">
-          <h3 class="text-[15px] font-medium">{% trans "Nouvelle fiche d'activité" %}</h3>
-          <button type="button" @click="modal = false" class="grid h-8 w-8 place-items-center rounded-full" style="color: var(--text-muted)">✕</button>
+       class="fixed inset-0 z-40 overflow-y-auto lg:pl-[var(--nav-offset)]"
+       style="margin: 0; background: rgb(0 0 0 / 0.4)"
+       role="dialog" aria-modal="true" aria-labelledby="taxo-titre">
+    <div class="min-h-screen" style="background: var(--page)">
+
+      <div class="sticky top-0 z-10 flex flex-wrap items-center justify-between gap-3 px-5 py-3"
+           style="background: var(--page); border-bottom: 1px solid var(--border-strong)">
+        <div class="flex min-w-0 items-center gap-3">
+          <button type="button" @click="modal = false" title="{% trans 'Fermer' %}"
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+            <span class="material-icons-round text-[22px]">arrow_back</span>
+          </button>
+          <div class="min-w-0">
+            <h2 id="taxo-titre" class="truncate text-[20px]">{% trans "Nouvelle fiche d'activité" %}</h2>
+            <p class="hs-panel-sub">{% trans "Une activité est alignée si les quatre conditions sont réunies." %}</p>
+          </div>
         </div>
-        <form method="post" action="{% url 'environnement:taxonomie_create' %}" class="space-y-4">
-          {% csrf_token %}
-
-          <div class="grid grid-cols-2 gap-3">
-            <div class="col-span-2 sm:col-span-1">
-              <label for="taxo-libelle" class="mb-1 block text-[13px] font-medium">{% trans "Activité" %} <span style="color: var(--danger)">*</span></label>
-              <input id="taxo-libelle" name="libelle" required placeholder="{% trans 'ex: Production de noix' %}" class="w-full">
-            </div>
-            <div>
-              <label for="taxo-code_nace" class="mb-1 block text-[13px] font-medium">{% trans "Code NACE" %}</label>
-              <input id="taxo-code_nace" name="code_nace" placeholder="ex: A1.25" class="w-full">
-            </div>
-            <div>
-              <label for="taxo-campagne" class="mb-1 block text-[13px] font-medium">{% trans "Campagne" %}</label>
-              <input id="taxo-campagne" name="campagne" type="number" value="{{ campagne }}" min="2020" max="2100" class="w-full">
-            </div>
-            <div class="col-span-2">
-              <label for="taxo-objectif" class="mb-1 block text-[13px] font-medium">{% trans "Objectif de contribution" %}</label>
-              <select id="taxo-objectif" name="objectif" class="w-full">
-                {% for value, label in objectifs %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-              </select>
-            </div>
-          </div>
-
-          {# Conditions d'alignement #}
-          <div class="rounded-xl p-3" style="border: 0.5px solid var(--border)">
-            <p class="mb-2 text-[12px] font-medium" style="color: var(--text-secondary)">{% trans "Conditions" %}</p>
-            <div class="space-y-2 text-[13px]">
-              <label class="flex cursor-pointer items-center gap-2"><input type="checkbox" name="eligible" class="h-4 w-4 accent-brand">{% trans "Activité éligible (figure dans la Taxonomie)" %}</label>
-              <label class="flex cursor-pointer items-center gap-2"><input type="checkbox" name="contribution" class="h-4 w-4 accent-brand">{% trans "Contribution substantielle vérifiée" %}</label>
-              <label class="flex cursor-pointer items-center gap-2"><input type="checkbox" name="garanties" class="h-4 w-4 accent-brand">{% trans "Garanties minimales respectées" %}</label>
-            </div>
-          </div>
-
-          {# DNSH par objectif #}
-          <div class="rounded-xl p-3" style="border: 0.5px solid var(--border)">
-            <p class="mb-1 text-[12px] font-medium" style="color: var(--text-secondary)">{% trans "DNSH — ne nuit pas significativement à :" %}</p>
-            <p class="mb-2 text-[12px]" style="color: var(--text-muted)">{% trans "À cocher pour les objectifs autres que celui de contribution." %}</p>
-            <div class="grid grid-cols-1 gap-2 text-[13px] sm:grid-cols-2">
-              {% for value, label in objectifs %}
-                <label class="flex cursor-pointer items-center gap-2"><input type="checkbox" name="dnsh_{{ value }}" class="h-4 w-4 accent-brand">{{ label }}</label>
-              {% endfor %}
-            </div>
-          </div>
-
-          {# Données financières #}
-          <div class="grid grid-cols-3 gap-3">
-            <div>
-              <label for="taxo-ca" class="mb-1 block text-[13px] font-medium">{% trans "CA (€)" %}</label>
-              <input id="taxo-ca" name="chiffre_affaires" type="number" step="0.01" class="w-full">
-            </div>
-            <div>
-              <label for="taxo-capex" class="mb-1 block text-[13px] font-medium">CapEx (€)</label>
-              <input id="taxo-capex" name="capex" type="number" step="0.01" class="w-full">
-            </div>
-            <div>
-              <label for="taxo-opex" class="mb-1 block text-[13px] font-medium">OpEx (€)</label>
-              <input id="taxo-opex" name="opex" type="number" step="0.01" class="w-full">
-            </div>
-          </div>
-
-          <div>
-            <label for="taxo-justification" class="mb-1 block text-[13px] font-medium">{% trans "Justification" %}</label>
-            <textarea id="taxo-justification" name="justification" rows="2" class="w-full"></textarea>
-          </div>
-
-          <div class="flex justify-end gap-2 pt-1">
-            <button type="button" @click="modal = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
-            <button type="submit" class="hs-btn-primary">{% trans "Ajouter" %}</button>
-          </div>
-        </form>
+        <div class="flex items-center gap-2">
+          <button type="button" @click="modal = false" class="hs-btn-outline">{% trans "Annuler" %}</button>
+          <button type="submit" form="taxo-form" class="hs-btn-primary">
+            <span class="material-icons-round text-[18px]">save</span>{% trans "Ajouter" %}
+          </button>
+        </div>
       </div>
+
+      <form id="taxo-form" method="post" action="{% url 'environnement:taxonomie_create' %}" class="px-5 py-5 pb-8">
+        {% csrf_token %}
+        <div class="grid items-start gap-5 xl:grid-cols-2">
+
+          <div class="space-y-5">
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">badge</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "L'activité" %}</p>
+                  <p class="hs-panel-sub">{% trans "Ce qu'elle est, et à quel objectif elle contribue." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+                <div class="sm:col-span-2">
+                  <label for="taxo-libelle" class="mb-1.5 block text-sm font-medium">{% trans "Activité" %} <span style="color: var(--danger)">*</span></label>
+                  <input id="taxo-libelle" name="libelle" required placeholder="{% trans 'ex: Production de noix' %}">
+                </div>
+                <div>
+                  <label for="taxo-code_nace" class="mb-1.5 block text-sm font-medium">{% trans "Code NACE" %}</label>
+                  <input id="taxo-code_nace" name="code_nace" placeholder="ex: A1.25">
+                </div>
+                <div>
+                  <label for="taxo-campagne" class="mb-1.5 block text-sm font-medium">{% trans "Campagne" %}</label>
+                  <input id="taxo-campagne" name="campagne" type="number" value="{{ campagne }}" min="2020" max="2100">
+                </div>
+                <div class="sm:col-span-2">
+                  <label for="taxo-objectif" class="mb-1.5 block text-sm font-medium">{% trans "Objectif de contribution" %}</label>
+                  <select id="taxo-objectif" name="objectif">
+                    {% for value, label in objectifs %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+                  </select>
+                </div>
+                <div class="sm:col-span-2">
+                  <label for="taxo-justification" class="mb-1.5 block text-sm font-medium">{% trans "Justification" %}</label>
+                  <textarea id="taxo-justification" name="justification" rows="4"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">euro</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Montants" %}</p>
+                  <p class="hs-panel-sub">{% trans "Ce qui fait la part alignée du CA, des CapEx et des OpEx." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body grid gap-4 sm:grid-cols-3">
+                <div>
+                  <label for="taxo-ca" class="mb-1.5 block text-sm font-medium">{% trans "CA (€)" %}</label>
+                  <input id="taxo-ca" name="chiffre_affaires" type="number" step="0.01" inputmode="decimal">
+                </div>
+                <div>
+                  <label for="taxo-capex" class="mb-1.5 block text-sm font-medium">CapEx (€)</label>
+                  <input id="taxo-capex" name="capex" type="number" step="0.01" inputmode="decimal">
+                </div>
+                <div>
+                  <label for="taxo-opex" class="mb-1.5 block text-sm font-medium">OpEx (€)</label>
+                  <input id="taxo-opex" name="opex" type="number" step="0.01" inputmode="decimal">
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-5">
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">checklist</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "Conditions d'alignement" %}</p>
+                  <p class="hs-panel-sub">{% trans "Les trois se cumulent avec le DNSH ci-dessous." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body space-y-3 text-[13.5px]" style="color: var(--text)">
+                <label class="flex cursor-pointer items-center gap-2.5"><input type="checkbox" name="eligible" class="h-4 w-4" style="accent-color: var(--action)">{% trans "Activité éligible (figure dans la Taxonomie)" %}</label>
+                <label class="flex cursor-pointer items-center gap-2.5"><input type="checkbox" name="contribution" class="h-4 w-4" style="accent-color: var(--action)">{% trans "Contribution substantielle vérifiée" %}</label>
+                <label class="flex cursor-pointer items-center gap-2.5"><input type="checkbox" name="garanties" class="h-4 w-4" style="accent-color: var(--action)">{% trans "Garanties minimales respectées" %}</label>
+              </div>
+            </div>
+
+            <div class="hs-panel">
+              <div class="hs-panel-head">
+                <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">shield</span></span>
+                <div>
+                  <p class="hs-panel-title">{% trans "DNSH" %}</p>
+                  <p class="hs-panel-sub">{% trans "Ne nuit pas significativement aux autres objectifs." %}</p>
+                </div>
+              </div>
+              <div class="hs-panel-body space-y-3">
+                <p class="text-[12.5px]" style="color: var(--text-secondary)">{% trans "À cocher pour les objectifs autres que celui de contribution." %}</p>
+                <div class="grid gap-3 text-[13.5px] sm:grid-cols-2" style="color: var(--text)">
+                  {% for value, label in objectifs %}
+                    <label class="flex cursor-pointer items-center gap-2.5"><input type="checkbox" name="dnsh_{{ value }}" class="h-4 w-4" style="accent-color: var(--action)">{{ label }}</label>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
     </div>
   </div>
 

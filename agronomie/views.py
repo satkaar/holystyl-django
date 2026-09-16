@@ -271,9 +271,6 @@ def type_sol_delete(request, pk):
     return redirect("agronomie:types_sol")
 
 
-PLAFOND_N = 170  # Directive Nitrates 91/676/CEE — kg N/ha/an en zone vulnérable
-
-
 @login_required
 def fertigation(request):
     """Catalogue d'engrais, suivi Directive Nitrates, historique des apports."""
@@ -296,8 +293,6 @@ def fertigation(request):
         "fertigations": fertigations,
         "parcelles": parcelles,
         "total_n": total_n,
-        "plafond_n": PLAFOND_N,
-        "pct_n": min(100, round(total_n / PLAFOND_N * 100)) if PLAFOND_N else 0,
         "page_title": _("Fertigation"),
     })
 

@@ -1,61 +1,265 @@
 {% extends "base.html" %}
 {% load i18n %}
+{% comment %}
+  La fiche d'un membre, sur toute la largeur : l'identité en tête, puis ce que
+  le contrat de travail demande, rangé par rubrique. Le panneau de droite dit
+  ce qui manque encore au contrat et porte l'accès employé — hors du
+  formulaire, car inviter n'est pas enregistrer et deux <form> ne s'imbriquent
+  pas. Le bouton d'enregistrement, lui, reste en tête de page et vise le
+  formulaire par son id.
+{% endcomment %}
 
 {% block content %}
-<section class="mx-auto max-w-3xl space-y-6">
+<style>
+  .fiche-barre {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    margin-inline: -1.25rem;
+    padding: 0.85rem 1.25rem;
+    background: var(--page);
+    border-bottom: 1px solid var(--border-strong);
+  }
+  .fiche-avatar {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+  .fiche-jauge { height: 8px; border-radius: 999px; background: var(--surface-alt); overflow: hidden;
+                 border: 1px solid var(--border-strong); }
+  .fiche-jauge > span { display: block; height: 100%; background: var(--success); }
+  .fiche-manque { color: var(--danger); }
+  .fiche-acquis { color: var(--success); }
+  @media (min-width: 1280px) {
+    .fiche-cote { position: sticky; top: 5.5rem; }
+  }
+</style>
 
-  <div class="flex items-center gap-3">
-    <a href="{% url 'equipe:equipe' %}" title="{% trans 'Retour' %}"
-       class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text-muted)">
-      <span class="material-icons-round text-[20px]">arrow_back</span>
-    </a>
-    <h1 class="text-[20px]">{% trans "Modifier le membre" %}</h1>
-  </div>
+<section class="hs-contraste space-y-5 pb-6">
 
-  <div class="hs-card p-5">
-    <form method="post" class="space-y-5">
-      {% csrf_token %}
-      {% include "equipe/_member_fields.html" %}
-
-      <div class="flex items-center justify-end gap-2 pt-1">
-        <a href="{% url 'equipe:equipe' %}" class="hs-btn-outline">
-          {% trans "Annuler" %}
-        </a>
-        <button type="submit" class="hs-btn-primary">{% trans "Enregistrer" %}</button>
-      </div>
-    </form>
-  </div>
-
-  {% comment %}Accès employé. Hors du formulaire d'édition : inviter n'est pas
-  enregistrer, et imbriquer deux <form> est invalide.{% endcomment %}
-  <div class="hs-card p-5">
-    <div class="flex flex-wrap items-start justify-between gap-4">
+  {# ── En tête : qui l'on édite, et de quoi enregistrer sans remonter ── #}
+  <div class="fiche-barre flex flex-wrap items-center justify-between gap-4">
+    <div class="flex min-w-0 items-center gap-3">
+      <a href="{% url 'equipe:equipe' %}" title="{% trans 'Retour' %}"
+         class="grid h-9 w-9 shrink-0 place-items-center rounded-lg transition hover:bg-black/5 dark:hover:bg-white/10" style="color: var(--text)">
+        <span class="material-icons-round text-[22px]">arrow_back</span>
+      </a>
+      <span class="fiche-avatar" style="background: {{ member.color }}">{{ form.first_name.initial|slice:":1"|upper }}{{ form.last_name.initial|slice:":1"|upper }}</span>
       <div class="min-w-0">
-        <p class="text-[15px] font-medium">{% trans "Espace employé" %}</p>
-        <p class="mt-1 text-[13px]" style="color: var(--text-secondary)">
-          {% if member.user_id %}
-            {% blocktrans with email=member.user.email %}Compte lié : {{ email }}. {{ member }} accède à ses tâches et à son planning.{% endblocktrans %}
-          {% elif not member.email %}
-            {% trans "Renseignez un email ci-dessus, puis enregistrez, pour pouvoir inviter ce membre." %}
-          {% elif member.invitation_sent_at %}
-            {% blocktrans with email=member.email date=member.invitation_sent_at|date:"d/m/Y à H:i" %}Invitation envoyée à {{ email }} le {{ date }}, pas encore acceptée. Le lien est valable 7 jours.{% endblocktrans %}
-          {% else %}
-            {% blocktrans with email=member.email %}Invitez {{ email }} à créer son compte : il ouvrira son espace employé et verra ses tâches.{% endblocktrans %}
-          {% endif %}
-        </p>
+        <h1 class="truncate text-[20px] leading-tight">{{ member.name }}</h1>
+        <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[13px]" style="color: var(--text-secondary)">
+          <span class="hs-badge hs-badge-bail">{{ member.get_role_display }}</span>
+          {% if member.poste %}<span>{{ member.poste }}</span>{% endif %}
+          {% if member.email %}<span class="truncate">{{ member.email }}</span>{% endif %}
+        </div>
       </div>
-
-      {% if member.user_id %}
-        <span class="hs-badge hs-badge-patrimoine shrink-0">{% trans "Compte actif" %}</span>
-      {% elif member.email %}
-        <form method="post" action="{% url 'equipe:membre_inviter' member.pk %}" class="shrink-0">
-          {% csrf_token %}
-          <button type="submit" class="{% if member.invitation_sent_at %}hs-btn-outline{% else %}hs-btn-primary{% endif %}">
-            {% if member.invitation_sent_at %}{% trans "Renvoyer l'invitation" %}{% else %}{% trans "Inviter par email" %}{% endif %}
-          </button>
-        </form>
-      {% endif %}
+    </div>
+    <div class="flex items-center gap-2">
+      <a href="{% url 'equipe:equipe' %}" class="hs-btn-outline">{% trans "Annuler" %}</a>
+      <button type="submit" form="fiche-membre" class="hs-btn-primary">
+        <span class="material-icons-round text-[18px]">save</span>{% trans "Enregistrer" %}
+      </button>
     </div>
   </div>
+
+  {% if form.errors %}
+    <div class="flex items-start gap-2 rounded-[10px] px-4 py-3 text-sm"
+         style="border: 1px solid var(--danger); color: var(--danger); background: color-mix(in srgb, var(--danger) 8%, transparent)">
+      <span class="material-icons-round text-[18px]">error_outline</span>
+      <div>
+        {% trans "Certains champs sont à corriger : ils sont signalés en rouge ci-dessous." %}
+        {{ form.non_field_errors }}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
+
+    <form id="fiche-membre" method="post" class="space-y-5">
+      {% csrf_token %}
+
+      <div class="hs-panel">
+        <div class="hs-panel-head">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">person</span></span>
+          <div>
+            <p class="hs-panel-title">{% trans "Identité" %}</p>
+            <p class="hs-panel-sub">{% trans "Nom, contact et rôle dans l'équipe." %}</p>
+          </div>
+        </div>
+        <div class="hs-panel-body grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+          {% include "accounts/_field.html" with field=form.first_name %}
+          {% include "accounts/_field.html" with field=form.last_name %}
+          {% include "accounts/_field.html" with field=form.role %}
+          {% include "accounts/_field.html" with field=form.email %}
+          {% include "accounts/_field.html" with field=form.phone %}
+        </div>
+      </div>
+
+      <div class="grid items-start gap-5 lg:grid-cols-2">
+        <div class="space-y-5">
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">badge</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "État civil" %}</p>
+                <p class="hs-panel-sub">{% trans "Pour le contrat et la déclaration d'embauche." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+              {% include "accounts/_field.html" with field=form.civilite %}
+              {% include "accounts/_field.html" with field=form.nom_naissance %}
+              {% include "accounts/_field.html" with field=form.date_naissance %}
+              {% include "accounts/_field.html" with field=form.lieu_naissance %}
+              {% include "accounts/_field.html" with field=form.nationalite %}
+              {% include "accounts/_field.html" with field=form.numero_securite_sociale %}
+            </div>
+          </div>
+
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">verified_user</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "Autorisation de travail" %}</p>
+                <p class="hs-panel-sub">{% trans "Hors Union européenne : à vérifier avant l'embauche." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body grid gap-4 sm:grid-cols-2">
+              {% include "accounts/_field.html" with field=form.titre_sejour_numero %}
+              {% include "accounts/_field.html" with field=form.titre_sejour_expire_le %}
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-5">
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">home</span></span>
+              <div>
+                <p class="hs-panel-title">{% trans "Adresse" %}</p>
+                <p class="hs-panel-sub">{% trans "Le domicile du salarié, tel qu'il figurera au contrat." %}</p>
+              </div>
+            </div>
+            <div class="hs-panel-body grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+              <div class="sm:col-span-2">{% include "accounts/_field.html" with field=form.adresse %}</div>
+              {% include "accounts/_field.html" with field=form.code_postal %}
+              {% include "accounts/_field.html" with field=form.ville %}
+            </div>
+          </div>
+
+          <div class="hs-panel">
+            <div class="hs-panel-head">
+              <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">work</span></span>
+              <div class="min-w-0 flex-1">
+                <p class="hs-panel-title">{% trans "Emploi" %}</p>
+                <p class="hs-panel-sub">{% trans "Le poste occupé et sa place dans la convention collective." %}</p>
+              </div>
+              <a href="{% url 'equipe:postes' %}" class="hs-btn-outline shrink-0">
+                <span class="material-icons-round text-[16px]">work_history</span>{% trans "Banque des postes" %}
+              </a>
+            </div>
+            <div class="hs-panel-body grid gap-4">
+              {# Rendu à la main : le champ porte la banque des postes en liste déroulante. #}
+              <div>
+                <label class="mb-1.5 block text-sm font-medium" style="color: var(--text)" for="id_poste">{{ form.poste.label }}</label>
+                {% include "equipe/_champ_poste.html" with champ_id="id_poste" champ_nom="poste" valeur=form.poste.value %}
+                <p class="mt-1 text-xs" style="color: var(--text-muted)">{{ form.poste.help_text }}</p>
+                {% for error in form.poste.errors %}<p class="mt-1 text-xs" style="color: var(--danger)">{{ error }}</p>{% endfor %}
+              </div>
+              {% include "accounts/_field.html" with field=form.qualification %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <aside class="fiche-cote space-y-5">
+      {# ── Ce que le contrat trouvera sur la fiche ── #}
+      <div class="hs-panel">
+        <div class="hs-panel-head">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">fact_check</span></span>
+          <div class="min-w-0 flex-1">
+            <p class="hs-panel-title">{% trans "Dossier du contrat" %}</p>
+            <p class="hs-panel-sub">
+              {% blocktrans with n=dossier_complet total=dossier|length %}{{ n }} sur {{ total }} renseignés{% endblocktrans %}
+            </p>
+          </div>
+        </div>
+        <div class="hs-panel-body space-y-4">
+          <div class="fiche-jauge"><span style="width: {% widthratio dossier_complet dossier|length 100 %}%"></span></div>
+          <ul class="space-y-1.5 text-[13.5px]">
+            {% for libelle, rempli in dossier %}
+              <li class="flex items-center gap-2" style="color: var(--text)">
+                {% if rempli %}
+                  <span class="material-icons-round fiche-acquis text-[18px]">check_circle</span>
+                {% else %}
+                  <span class="material-icons-round fiche-manque text-[18px]">radio_button_unchecked</span>
+                {% endif %}
+                <span{% if not rempli %} class="font-medium"{% endif %}>{{ libelle }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+          <p class="text-[12.5px]" style="color: var(--text-secondary)">
+            {% trans "Ces informations rempliront le contrat quand vous l'établirez. Ce qui manque s'imprimera en pointillés." %}
+          </p>
+          <a href="{% url 'equipe:contrats' %}" class="hs-btn-outline w-full">
+            <span class="material-icons-round text-[18px]">description</span>{% trans "Établir un contrat" %}
+          </a>
+        </div>
+      </div>
+
+      {# ── Accès employé ── #}
+      <div class="hs-panel">
+        <div class="hs-panel-head">
+          <span class="hs-panel-icon"><span class="material-icons-round text-[19px]">phone_iphone</span></span>
+          <div class="min-w-0 flex-1">
+            <p class="hs-panel-title">{% trans "Espace employé" %}</p>
+          </div>
+          {% if member.user_id %}
+            <span class="hs-badge hs-badge-success shrink-0">{% trans "Compte actif" %}</span>
+          {% endif %}
+        </div>
+        <div class="hs-panel-body space-y-4">
+          <p class="text-[13.5px]" style="color: var(--text)">
+            {% if member.user_id %}
+              {% blocktrans with email=member.user.email %}Compte lié : {{ email }}. {{ member }} accède à ses tâches et à son planning.{% endblocktrans %}
+            {% elif not member.email %}
+              {% trans "Renseignez un email ci-dessus, puis enregistrez, pour pouvoir inviter ce membre." %}
+            {% elif member.invitation_sent_at %}
+              {% blocktrans with email=member.email date=member.invitation_sent_at|date:"d/m/Y à H:i" %}Invitation envoyée à {{ email }} le {{ date }}, pas encore acceptée. Le lien est valable 7 jours.{% endblocktrans %}
+            {% else %}
+              {% blocktrans with email=member.email %}Invitez {{ email }} à créer son compte : il ouvrira son espace employé et verra ses tâches.{% endblocktrans %}
+            {% endif %}
+          </p>
+          {% if not member.user_id and member.email %}
+            <form method="post" action="{% url 'equipe:membre_inviter' member.pk %}">
+              {% csrf_token %}
+              <button type="submit" class="{% if member.invitation_sent_at %}hs-btn-outline{% else %}hs-btn-primary{% endif %} w-full">
+                <span class="material-icons-round text-[18px]">send</span>
+                {% if member.invitation_sent_at %}{% trans "Renvoyer l'invitation" %}{% else %}{% trans "Inviter par email" %}{% endif %}
+              </button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </aside>
+  </div>
 </section>
+
+<script>
+  /* Un poste choisi dans la banque apporte sa qualification — sans écraser
+     celle qu'on aurait déjà saisie. */
+  document.getElementById('id_poste').addEventListener('poste-choisi', function (evt) {
+    const qualification = document.getElementById('id_qualification');
+    if (evt.detail.qualification && !qualification.value.trim()) {
+      qualification.value = evt.detail.qualification;
+    }
+  });
+</script>
 {% endblock %}

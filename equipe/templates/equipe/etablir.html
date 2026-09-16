@@ -157,15 +157,16 @@
       urls: etat.urls_signatures,
       libre: etat.libre,
       libelleRestants: '{{ restants_libelle|escapejs }}',
-      /* Le salarié choisi remplit son identité. Le poste ne s'écrase que
-         s'il est encore vide : on ne défait pas une saisie. */
+      /* Le salarié choisi remplit ce que dit sa fiche : état civil,
+         adresse, qualification. Le poste ne s'écrase que s'il est encore
+         vide : on ne défait pas une saisie. */
       choisirMembre() {
         const fiche = this.fiches[this.membre];
         if (!fiche) return;
-        for (const cle of ['salarie', 'salarie_email', 'salarie_telephone']) {
-          if (cle in this.v) this.v[cle] = fiche[cle] || '';
+        for (const [cle, valeur] of Object.entries(fiche)) {
+          if (!(cle in this.v) || (cle === 'poste' && this.v.poste)) continue;
+          this.v[cle] = valeur || '';
         }
-        if ('poste' in this.v && !this.v.poste) this.v.poste = fiche.poste || '';
       },
       /* Passer une liste en saisie libre, sans garder le mot-clé comme valeur. */
       basculer(cle) {

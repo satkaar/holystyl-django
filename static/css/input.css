@@ -216,6 +216,10 @@
     border-radius: 8px;
     padding: 10px 12px;
   }
+  .hs-contraste .hs-tile {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+  }
 
   /* ── Boutons ── */
   .hs-btn-primary {
@@ -299,6 +303,90 @@
   /* Issue d'un traitement : vert quand c'est acquis, rouge quand c'est refusé. */
   .hs-badge-success    { background: color-mix(in srgb, var(--success) 14%, transparent); color: var(--success); }
   .hs-badge-danger     { background: color-mix(in srgb, var(--danger) 14%, transparent);  color: var(--danger); }
+  .hs-badge-warning    { background: color-mix(in srgb, var(--warning) 16%, transparent); color: var(--warning); }
+
+  /* ── Panneau contrasté : pour les pages de saisie denses ──
+     Un filet plein et un bandeau de titre sur la surface secondaire. Sur le
+     fond de page presque blanc, la bordure de 0.5px de `.hs-card` laisse des
+     rubriques voisines se fondre. */
+  /* Pas d'`overflow: hidden` : une liste déroulante posée dans le panneau
+     doit pouvoir en déborder. Le bandeau et le pied arrondissent donc leurs
+     propres coins. */
+  .hs-panel {
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+  }
+  .hs-panel-head {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 20px;
+    background: var(--surface-alt);
+    border-bottom: 1px solid var(--border-strong);
+    border-radius: 11px 11px 0 0;
+  }
+  .hs-panel-foot {
+    display: flex; justify-content: flex-end; gap: 0.5rem;
+    padding: 12px 20px;
+    background: var(--surface-alt);
+    border-top: 1px solid var(--border-strong);
+    border-radius: 0 0 11px 11px;
+  }
+  .hs-panel-icon {
+    display: grid; place-items: center; flex-shrink: 0;
+    width: 34px; height: 34px; border-radius: 9px;
+    background: var(--action); color: var(--on-action);
+  }
+  .hs-panel-title { font-size: 15px; font-weight: 500; color: var(--text); line-height: 1.3; }
+  .hs-panel-sub { font-size: 12.5px; color: var(--text-secondary); line-height: 1.35; }
+  .hs-panel-body { padding: 20px; }
+
+  /* Des champs qu'on voit : filet plein, plus sombre que le trait par défaut. */
+  .hs-contraste input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not(.input-bare),
+  .hs-contraste select,
+  .hs-contraste textarea {
+    border: 1px solid color-mix(in srgb, var(--text) 24%, transparent);
+  }
+  .hs-contraste input:focus, .hs-contraste select:focus, .hs-contraste textarea:focus {
+    border-color: var(--action);
+  }
+
+  /* ── Liste déroulante à saisie (combobox) ──
+     Accrochée sous son champ et de la même largeur, contrairement au
+     <datalist> que chaque navigateur dessine à sa façon, parfois loin du champ. */
+  .hs-combo { position: relative; }
+  .hs-combo > input { padding-right: 2.25rem; }
+  .hs-combo-bouton {
+    position: absolute; top: 0; right: 0; bottom: 0;
+    display: grid; place-items: center; width: 2.25rem;
+    color: var(--text-secondary);
+  }
+  .hs-combo-bouton:hover { color: var(--text); }
+  .hs-combo-liste {
+    position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
+    max-height: 20rem; overflow-y: auto; padding: 4px;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.14);
+  }
+  .hs-combo-groupe {
+    position: sticky; top: -4px; z-index: 1;
+    padding: 8px 10px 4px; margin: 0 -4px;
+    font-size: 11px; font-weight: 500; letter-spacing: 0.04em; text-transform: uppercase;
+    color: var(--text-secondary); background: var(--surface);
+  }
+  .hs-combo-option {
+    display: flex; align-items: center; gap: 10px;
+    padding: 7px 10px; border-radius: 7px; cursor: pointer;
+  }
+  .hs-combo-option.is-actif { background: var(--action-subtle); }
+  .hs-combo-option[aria-selected="true"] .hs-combo-titre { color: var(--action-text); }
+  .hs-combo-titre { font-size: 14px; font-weight: 500; color: var(--text); }
+  .hs-combo-detail {
+    font-size: 12px; color: var(--text-secondary);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .hs-combo-vide { padding: 10px; font-size: 13px; color: var(--text-secondary); }
 
   /* ── Pastille de statut ── */
   .hs-pill {

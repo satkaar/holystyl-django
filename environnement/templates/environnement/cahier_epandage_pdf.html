@@ -1,0 +1,92 @@
+{% load i18n %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>{% blocktrans %}Cahier d'épandage — {{ campagne }}{% endblocktrans %}</title>
+  <style>
+    @page { size: A4 landscape; margin: 14mm 12mm; }
+    body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 9pt; color: #111; }
+    h1 { font-size: 15pt; font-weight: 600; margin: 0; }
+    .entete { border-bottom: 1pt solid #333; padding-bottom: 3mm; margin-bottom: 5mm; }
+    .ferme { font-size: 10pt; margin-top: 1mm; }
+    .meta { font-size: 8.5pt; color: #555; margin-top: 1mm; }
+    table { width: 100%; border-collapse: collapse; margin-top: 2mm; }
+    th, td { border: 0.4pt solid #999; padding: 1.6mm 2mm; text-align: left; }
+    th { background: #eee; font-weight: 600; font-size: 8.5pt; }
+    td.num, th.num { text-align: right; }
+    tfoot td { font-weight: 600; background: #f5f5f5; }
+    .totaux { margin-top: 5mm; font-size: 9.5pt; }
+    .totaux span { display: inline-block; margin-right: 8mm; }
+    .alerte { color: #A32D2D; font-weight: 600; }
+    .pied { margin-top: 6mm; border-top: 0.4pt solid #999; padding-top: 2.5mm; font-size: 7.5pt; color: #666; }
+  </style>
+</head>
+<body>
+  <div class="entete">
+    <h1>{% trans "Cahier d'épandage" %}</h1>
+    <p class="ferme">{{ exploitation.name }}{% if exploitation.siret %} — SIRET {{ exploitation.siret }}{% endif %}</p>
+    <p class="meta">
+      {% blocktrans %}Campagne {{ campagne }}{% endblocktrans %} ·
+      {% blocktrans with d=edite_le|date:"DATE_FORMAT" %}édité le {{ d }}{% endblocktrans %} ·
+      {% blocktrans with sau=bilan.sau %}SAU {{ sau }} ha{% endblocktrans %}
+    </p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>{% trans "Date" %}</th>
+        <th>{% trans "Parcelle" %}</th>
+        <th>{% trans "Nature" %}</th>
+        <th>{% trans "Produit" %}</th>
+        <th class="num">{% trans "Dose (kg/ha)" %}</th>
+        <th class="num">{% trans "Teneur N (%)" %}</th>
+        <th class="num">{% trans "N (kg/ha)" %}</th>
+        <th class="num">{% trans "Surface (ha)" %}</th>
+        <th class="num">{% trans "N total (kg)" %}</th>
+        <th>{% trans "Notes" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for l in bilan.lignes %}
+        <tr>
+          <td>{{ l.date|date:"d/m/Y" }}</td>
+          <td>{{ l.parcelle.name }}</td>
+          <td>{{ l.nature_libelle }}</td>
+          <td>{{ l.produit|default:"—" }}</td>
+          <td class="num">{% if l.dose_kg_ha %}{{ l.dose_kg_ha|floatformat:"-1" }}{% else %}—{% endif %}</td>
+          <td class="num">{% if l.teneur_n_pct %}{{ l.teneur_n_pct|floatformat:"-2" }}{% else %}—{% endif %}</td>
+          <td class="num">{{ l.n_kg_ha|floatformat:"-2" }}</td>
+          <td class="num">{{ l.surface_ha|default_if_none:"—"|floatformat:"-2" }}</td>
+          <td class="num">{{ l.n_total|floatformat:"-1" }}</td>
+          <td>{{ l.notes|default:"" }}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="10">{% trans "Aucun apport enregistré sur cette campagne." %}</td></tr>
+      {% endfor %}
+    </tbody>
+    {% if bilan.lignes %}
+      <tfoot>
+        <tr>
+          <td colspan="8">{% trans "Total de la campagne" %}</td>
+          <td class="num">{{ bilan.n_total|floatformat:"-1" }}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    {% endif %}
+  </table>
+
+  <p class="totaux">
+    <span>{% blocktrans with n=bilan.n_mineral %}Engrais minéraux : {{ n }} kg N{% endblocktrans %}</span>
+    <span>{% blocktrans with n=bilan.n_effluents %}Effluents d'élevage : {{ n }} kg N{% endblocktrans %}</span>
+    <span>{% blocktrans with n=bilan.n_organique_autre %}Autres apports organiques : {{ n }} kg N{% endblocktrans %}</span>
+  </p>
+  <p class="totaux {% if bilan.depasse %}alerte{% endif %}">
+    {% blocktrans with n=bilan.effluents_ha|default_if_none:"—" plafond=bilan.plafond %}Azote d'effluents d'élevage rapporté à la SAU : {{ n }} kg N/ha, pour un plafond de {{ plafond }} kg N/ha/an.{% endblocktrans %}
+  </p>
+
+  <p class="pied">
+    {% trans "Document établi depuis Isidor à partir des apports enregistrés. Le plafond de 170 kg N/ha/an porte sur l'azote organique issu des effluents d'élevage en zone vulnérable (directive 91/676/CEE). Les périodes d'épandage, la surface épandable et les obligations locales relèvent du programme d'actions national et régional : à vérifier avant usage." %}
+  </p>
+</body>
+</html>
